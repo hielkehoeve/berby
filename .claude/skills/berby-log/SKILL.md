@@ -19,3 +19,4 @@ Berby's build journal (`docs/log/`) is public: one markdown file per iteration s
    `grep -nE '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|/(Users|home)/|[0-9]{1,3}(\.[0-9]{1,3}){3}' docs/log/NNN-*.md`
    The GitHub handle `hielkehoeve` and the Pages URL are fine (public by design).
 5. If an earlier entry's "Status" promised something this iteration delivered, don't rewrite history: the new entry reports it.
+6. Close the iteration: ask the creator whether to run `/skill-creator` on all berby skills (`.claude/skills/berby-*`) to refine them from how this iteration went. Ask every time; don't assume the answer from last time.

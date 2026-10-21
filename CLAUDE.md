@@ -34,4 +34,5 @@ Berby is a mobile-web kart racer (player vs an AI rival, one Malibu track) built
 - Each iteration ends with a journal entry `docs/log/NNN-short-title.md` (convention in `docs/log/README.md`; `/berby-log` writes it) and a branch `iteration/NNN-short-title` at the resulting commit, so anyone can check out the state after each iteration.
 - The journal is public: never include email addresses, tokens, keys, passwords or home-directory paths; use repo-relative paths.
 - Hooks: `scripts/check-secrets.sh` blocks a commit whose staged files contain secrets or personal data (git pre-commit via `core.hooksPath .githooks`, plus a Claude Code hook on `git commit`). After each edit, Prettier formats the file and `tsc` reports type errors.
-- Skills: `/berby-tune` (headless sim report for handling and AI tuning), `/berby-playtest` (drive a lap in Chrome and report), `/berby-log`.
+- Skills: `/berby-tune` (headless sim report for handling and AI tuning), `/berby-playtest` (drive a lap in a browser and report), `/berby-log`.
+- At the end of each iteration, after the journal entry, ask the creator whether to run `/skill-creator` on all berby skills (`.claude/skills/berby-*`) to refine them from how the iteration went.

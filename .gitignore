@@ -5,3 +5,4 @@ dev-dist
 *.log
 .idea
 CLAUDE.local.md
+.playwright-mcp

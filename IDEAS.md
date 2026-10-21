@@ -8,6 +8,7 @@ Ideas we've parked so the MVP stays minimal. Not prioritized yet.
 - **Power-up items** — Mario Kart style pickups, e.g. glitter bomb, heart shield, lipstick rocket.
 - **Drift + boost** — hold to drift around corners and charge a speed boost.
 - **Tilt to steer** — alternative control scheme. Needs the motion-sensor permission prompt on iOS, which the MVP deliberately avoids.
+- **Vix overtakes instead of tailgating, and karts that block the view fade** — finding from the first playtest (iteration 4): the rubber band matches Vix's speed to the player's and her line is the centerline, so she sits 3–5 m behind the player's bumper while the chase camera is 8 m back, hiding the player. Two fixes, best together: the AI moves to the side when close behind to set up a pass, and any kart between the camera and the player turns translucent.
 
 ## Style & personalization
 - **Character & kart styling** — choose a driver, outfit, kart color/style (the fashion angle).

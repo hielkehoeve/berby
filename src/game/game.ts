@@ -254,6 +254,14 @@ export function createGame(container: HTMLElement): Game {
         rivalLap: race.rivalProgress.lap,
         winner: race.winner,
         fps,
+        // World positions, to check which object the camera follows and where each view sits.
+        positions: {
+          player: { ...race.player.position },
+          rival: { ...race.rival.position },
+          playerView: { x: playerView.object.position.x, z: playerView.object.position.z },
+          rivalView: { x: rivalView.object.position.x, z: rivalView.object.position.z },
+          camera: { x: camera.position.x, z: camera.position.z },
+        },
       }),
     };
     (window as unknown as { __berby: typeof hook }).__berby = hook;

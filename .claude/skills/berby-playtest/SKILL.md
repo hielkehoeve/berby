@@ -6,8 +6,8 @@ description: Launch Berby in Chrome, drive a race with the dev autopilot or the 
 ## Setup
 
 1. Dev server: if `curl -s -o /dev/null -w '%{http_code}' http://localhost:5173/berby/` is not `200`, start `npx vite --port 5173 --strictPort` in the background and wait for it.
-2. Load the Chrome tools in ONE ToolSearch call: `select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__tabs_close_mcp,mcp__claude-in-chrome__navigate,mcp__claude-in-chrome__computer,mcp__claude-in-chrome__javascript_tool,mcp__claude-in-chrome__read_console_messages,mcp__claude-in-chrome__resize_window`.
-3. `tabs_context_mcp` (createIfEmpty), then `tabs_create_mcp`, `resize_window` to 900×450 (a landscape phone shape), `navigate` to `http://localhost:5173/berby/`. If the extension reports "not connected" twice, stop and tell the user; don't keep retrying.
+2. Browser: prefer the Playwright plugin (a headless Chromium that needs no extension). Load its tools in ONE ToolSearch call: `select:mcp__plugin_playwright_playwright__browser_navigate,mcp__plugin_playwright_playwright__browser_resize,mcp__plugin_playwright_playwright__browser_evaluate,mcp__plugin_playwright_playwright__browser_take_screenshot,mcp__plugin_playwright_playwright__browser_console_messages,mcp__plugin_playwright_playwright__browser_wait_for,mcp__plugin_playwright_playwright__browser_close`. Then `browser_resize` to 900×450 (a landscape phone shape) and `browser_navigate` to `http://localhost:5173/berby/`. Run the hook calls below with `browser_evaluate`.
+   Fallback, only if Playwright isn't installed: Claude in Chrome (`mcp__claude-in-chrome__tabs_context_mcp`, `tabs_create_mcp`, `navigate`, `resize_window`, `javascript_tool`, `computer`, `read_console_messages`, `tabs_close_mcp`). If the extension reports "not connected" twice, stop and tell the user; don't keep retrying.
 
 ## Drive
 
@@ -26,8 +26,8 @@ For handling checks, use `__berby.input({steer: 1, brake: 0})` for a second, the
 
 ## Report
 
-- `read_console_messages` with `onlyErrors: true` plus pattern `warn|error|THREE` for Three.js warnings. Any error is a finding.
+- Console: `browser_console_messages` (Playwright) or `read_console_messages` with `onlyErrors: true` plus pattern `warn|error|THREE` (Chrome). Any error, and any Three.js warning, is a finding.
 - Frame rate from `state().fps` at three points (grid, mid-race, finish); below 50 on this Mac is a finding since phones are slower.
 - Race outcome: who won, total time, best lap, and whether lap/position/timer in the HUD matched `state()`.
 - Visual findings from the screenshots (z-fighting, clipping, unreadable HUD, camera through walls).
-- Close the tab with `tabs_close_mcp`, and stop the dev server if this skill started it.
+- Close the browser (`browser_close`, or `tabs_close_mcp` in Chrome), and stop the dev server if this skill started it.
