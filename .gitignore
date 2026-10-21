@@ -6,3 +6,5 @@ dev-dist
 .idea
 CLAUDE.local.md
 .playwright-mcp
+# Phone screen recordings and extracted frames for playtest analysis (never committed)
+playtests/

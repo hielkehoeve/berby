@@ -29,6 +29,18 @@ Asked how to handle it (AI that sets up a pass, ghosting of karts that block the
 - `IDEAS.md` — the tailgating finding with its two fixes.
 - `.gitignore` — Playwright's screenshot folder.
 
+## The phone test
+
+> **Creator**: Can you watch a video screen capture of the game I record on my phone?
+
+Not as a video, but as frames: the creator installed ffmpeg, recorded a race on an Android phone in Chrome from the live Pages build, and dropped the file into the gitignored `playtests/` folder. `scripts/analyze-recording.sh` probed it (185 s, 60 fps, H.264), extracted a frame every half second and ran ffmpeg's freeze detector; a duplicate-frame count over the racing section gave the effective frame rate.
+
+**Results**: the portrait "rotate your phone" overlay, the gesture-based fullscreen and landscape lock, the countdown, HUD, race and results card all worked in the browser tab. 60 fps for the whole race (9,915 unique frames in the 165 s racing window) and no hitch of 100 ms or more between the start and the results; the only stall sits in the countdown right after the fullscreen switch and is most likely the screen recorder, since the countdown digit visibly changed during it. The creator won in 2:52.79 with a best lap of 0:56.78, faster than Vix's best (58.4 s): she sat on the player's bumper through the first corners, then dropped out of frame for good. Two cosmetic notes: the HUD timer overlaps the start arch's banner text on the grid, and Android's fullscreen toast covers the brake button for the first seconds.
+
+> **Creator**: My second try, but I've played other kart games. I did brake in some corners. The button was a pinch out of reach but it is workable for now. The kart is very responsive. Camera is good. [Audio] good enough.
+
+(Claude had guessed from the frames that the steering hints never disappeared; the creator corrected that: they do fade after a few seconds. Frames sampled twice a second can't tell "always visible" from "re-shown on every new press".)
+
 ## Status
 
-Browser playtest passed. Next: the creator plays on a phone (the live Pages build is the right target: production build, installable, no server) and reports how steering, braking, the camera and the race against Vix feel, and whether a first try is winnable. That feedback drives the handling and AI tuning in iteration 5.
+Both playtests passed; handling, camera and audio are accepted as they are. Iteration 5 takes the three things the test surfaced: Vix should be a real opponent for an experienced player (she finished well behind a 56.8 s lap), the tailgating happens with a human too, and the brake button wants to sit a pinch closer to the thumb. Branch `iteration/004-first-playtest` marks this state.

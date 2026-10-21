@@ -24,6 +24,15 @@ A standard run: screenshot the title → `__berby.play()` → wait 4 s → scree
 
 For handling checks, use `__berby.input({steer: 1, brake: 0})` for a second, then `null`, and watch `playerSpeed`/`playerOnRoad`; keyboard events through the `computer` tool cannot be held down, so prefer the hook.
 
+## Phone recordings
+
+The creator can screen-record the game on a phone and drop the file into `playtests/` (gitignored). Then:
+
+1. `chmod +x scripts/analyze-recording.sh` once, then `scripts/analyze-recording.sh playtests/<file>.mp4` (needs ffmpeg). It prints codec, resolution, frame rate and duration, extracts frames at 2 per second into `playtests/<file>/frames/`, and lists freezes of 100 ms or more.
+2. Read the frames with the Read tool (frame N is at t = (N−1)/2 s). Look at: where the kart sits on the road through the hairpin and the palm tunnel, whether Vix blocks the view, the HUD, the brake button under the thumb, the rotate overlay in portrait, and the results card.
+3. Treat each freeze as a finding with its timestamp; match it to what was on screen in the nearest frames (the palm tunnel and the ocean are the heaviest scenery).
+4. Audio can't be judged from frames; ask the creator about the engine sound and the countdown.
+
 ## Report
 
 - Console: `browser_console_messages` (Playwright) or `read_console_messages` with `onlyErrors: true` plus pattern `warn|error|THREE` (Chrome). Any error, and any Three.js warning, is a finding.
