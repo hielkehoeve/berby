@@ -32,4 +32,4 @@ A survey agent read the manifests, README, workflows and hooks first, and found 
 
 ## Status
 
-The project is ready for its first commit on `main` and the `iteration/003-tooling-and-guardrails` branch, then the GitHub repository and Pages. First browser playtest as soon as the extension reconnects.
+First commit on `main` (`dabe08d`, 76 files, iterations 1–3 together), branch `iteration/003-tooling-and-guardrails`, public repository at github.com/hielkehoeve/berby, GitHub Pages enabled with the Actions source. The deploy workflow ran green on the first try and the game is live at https://hielkehoeve.github.io/berby/. The workflow's action versions target Node 20 and are being forced onto Node 24 by the runners; bumping them is a small follow-up. Iteration 4 starts with the first browser playtest, as soon as the extension reconnects.
