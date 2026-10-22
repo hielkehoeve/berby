@@ -56,4 +56,4 @@ Numbers: the bundle grew from 644 to 677 kB (170 to 183 kB gzipped); each mode a
 
 ## Status
 
-Pushed to `main` and deployed; `iteration/006-game-modes` marks the state. Next is the phone test of the six modes: which ones are fun, which need tuning (every mode keeps its constants in its own `tuning.ts`), and whether the action button and the brake band sit under the thumbs.
+Pushed to `main` and deployed; `iteration/006-game-modes` marks the state. GitHub dropped the push event for the commit (no workflow started on either workflow although the remote head was right), so the deploy was dispatched by hand for the same commit. The end-of-iteration skill-creator question got a "Yes" this time: the three Berby skills were rewritten from this iteration's evidence (the per-mode browser routine with its reference numbers, the page-reload trap while agents edit, the per-mode tuning files, and how agent reports are condensed into this journal), without the skill-creator's full eval loop, which was offered separately. Next is the phone test of the six modes: which ones are fun, which need tuning, and whether the action button and the brake band sit under the thumbs.

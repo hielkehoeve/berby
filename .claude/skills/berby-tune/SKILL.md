@@ -1,38 +1,47 @@
 ---
 name: berby-tune
-description: Run the headless Berby simulation report (rival alone, rival vs a stand-in player) and interpret lap times, on-road ratio and finish gaps against the design targets, then suggest which constant in src/sim/tuning.ts to change. Use when tuning handling, the rival AI, rubber-banding, or after changing the track layout.
+description: Measure and tune Berby's feel without a browser: the headless sim report (Vix alone, Vix against a stand-in player), the overtaking scenarios, and each game mode's own tuning file with its headless autopilot tests. Use when tuning handling, the rival AI, rubber-banding or overtaking, when a mode feels too easy, too hard or too long, after changing the track, or when phone feedback says a number is off (the tide too slow, the chain too hard, Vix too strong).
 ---
 
-The simulation is headless (`src/sim/`, no Three.js), so the race can be measured without a browser.
+Everything that shapes feel is a constant in one of a few files, and every one of them can be measured headlessly: `src/sim/` has no Three.js and the modes keep their logic in pure functions. Measure first, change one constant, measure again.
 
-## Run
+## Ground truth from the phone
 
-```
-BERBY_REPORT=1 npx vitest run src/sim/report.test.ts --silent=false
-```
+Phone tests outrank every headless number. So far (iterations 4 and 5): a second-try player who knows kart games won 2:52.79 with a 56.8 s best lap; Vix alone laps in 57.0 s; the brake needed a band, not a button. Add new phone numbers here when they come in, so the targets stay honest.
 
-`src/sim/report.test.ts` is skipped unless `BERBY_REPORT=1`, so it never runs in CI. `--silent=false` is required: Vitest hides console output from passing tests by default. It prints:
+## The race
 
-- Track: lap length, checkpoints, tightest radius.
-- Rival alone (no rubber band, dt = 1/60, 3 laps): lap times, finish time, on-road share of steps, max |lateral|, min speed.
-- Rival (rubber-banded) vs a stand-in player: the stand-in drives the same AI with a 5 % handicap and no rubber band; reports both finish times, the gap, and the gap against an un-banded rival for comparison.
-- A clean flat-out lap estimate: `length / PLAYER_TUNING.topSpeed`.
-
-## Targets (from MVP.md and docs/log/002)
+Run: `BERBY_REPORT=1 npx vitest run src/sim/report.test.ts --silent=false` (skipped without the variable so CI never runs it; `--silent=false` because Vitest hides the console output of passing tests). It prints the track figures, Vix alone (lap times, on-road share, max |lateral|, min speed), the banded Vix against a stand-in player 5 % slower (both finish times and the gap, plus the un-banded gap), and the flat-out lap estimate `length / topSpeed`.
 
 | Measure | Target |
 |---|---|
-| Rival lap time | 55–65 s (about 60) |
-| Rival on-road share | ≥ 97 %, ideally 100 % |
-| Banded finish gap vs 5 %-slower stand-in | 1–4 s, and under half the un-banded gap |
-| Player win rate on a first try | 50–60 % (only measurable on a device; the stand-in gap is the proxy) |
+| Vix alone, lap time | 56.5–57.5 s: the pace of a flat-out player on a good inside line |
+| Vix on-road share | ≥ 97 %, ideally 100 % |
+| Banded gap vs the 5 %-slower stand-in | 1–4 s, and under half the un-banded gap |
+| Equal AI vs AI from the real grid | finishes within ±2 s (`src/sim/rival.test.ts`) |
+| Time to pass a slower kart | about 5 s on the straight, 7 s in the hill curve, no contact (`passScenario` in `src/sim/scenarios.ts`) |
+| Player win rate on a first try | 50–60 %, only measurable on a phone |
 
-## Levers (all in `src/sim/tuning.ts`)
+Levers, all in `src/sim/tuning.ts`:
 
-- Lap time too long/short → `PLAYER_TUNING.topSpeed ≈ lap length / 58`. The rival inherits it.
-- Rival leaves the road or brakes too late → `RIVAL_TUNING.corneringGripFraction` (lower = more careful), `curvePreview`, `planHorizon`.
-- Rival too good → raise `lineWobbleAmplitude`, lower `corneringGripFraction`; too weak → the reverse.
-- Races not close enough → `RUBBER_BAND` (speed bonus when behind, penalty when ahead, and the distance thresholds).
-- Handling feel (only on a device): `maxLateralAccel` (grip), `steerResponse`/`steerReturn`, `brakeGripBonus`, `barrierSpeedLoss`.
+- Lap time: `PLAYER_TUNING.topSpeed ≈ lap length / 58`; Vix inherits it.
+- Vix leaves the road or brakes late: `RIVAL_TUNING.corneringGripFraction` (lower = more careful), `curvePreview`, `planHorizon`. Her line: `insideGain`, `maxLateralTarget`, `lineMargin`, `lineWobbleAmplitude`.
+- Races not close: `RUBBER_BAND` (+11 % when 40 m behind, −10 % when 60 m ahead).
+- Tailgating or clumsy passes: `OVERTAKE_TUNING` (`approachRange`, `passMargin`, `minRoom`, `blockGap`, `dontBlockOffset`); in a playtest `state().occlusion` should stay near 0.
+- Handling feel (phone only): `maxLateralAccel`, `steerResponse` and `steerReturn`, `brakeGripBonus`, `barrierSpeedLoss`.
 
-After any change: `npx vitest run src/sim` must stay green (the tests assert ranges, not exact numbers), then re-run the report and compare.
+After a change: `npx vitest run src/sim` stays green (the tests assert ranges, not exact numbers), then re-run the report and compare.
+
+## The modes
+
+Each mode's constants live in its own file with a doc comment per knob, and each mode has headless tests that drive a real race with the autopilot; those tests are the instrument: `npx vitest run src/modes/<id>` (add `--reporter=verbose` to see which case moved).
+
+| Mode | Knobs | Headless reference (autopilot) |
+|---|---|---|
+| Glam Cup, `src/modes/cup/tuning.ts` | box rows and slots, roll weights by gap, rocket factor and duration, bomb life and pool, missile speed, life and range, spin factor and duration, shield, Vix's hold time | 100 s deterministic race: 12 pickups, 11 uses, 4 hits (`cup.test.ts`); first pickup at about 7.8 s |
+| Ghost Lap, `GHOST_TUNING` in `src/modes/ghost/ghost-lap.ts` | record rate, quantization, the ±0.3 s status band | identical laps give a delta within 0.05 s |
+| Glitter Rush, `src/modes/rush/tuning.ts` | timer, star spacing and lane runs, gold count and bonus seconds, chain window and the ×2 and ×3 thresholds, respawn | 54 glitter, longest chain 14, 0 gold in 75 s (the autopilot never leaves the racing line) |
+| Tide Rush, `src/modes/tide/tuning.ts` | start gap, start speed, step and interval, max speed, warning gap, wave size | a stopped kart is caught at 3.0 s; 14 m/s lasts about 30 s; a clean 21.3 m/s run about 333 s; 24.5 m/s is never caught |
+| Hot Seat, `src/modes/hotseat/tuning.ts` | dead-heat window, catch-message seconds, lead deadband and hold, tick spacing | identical laps: "Dead heat!", gap +0.00 |
+
+Reading the references: the autopilot drives the racing line at full speed, so it is an upper bound for a human on glitter and distance and a lower bound on hits taken; a mode whose autopilot number sits far from what the phone reports is the one to tune. Feel a change in a browser afterwards (`/berby-playtest`), then on the phone.
