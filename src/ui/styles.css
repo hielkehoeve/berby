@@ -20,6 +20,13 @@
   --brake-size: 92px;
   --brake-hit: 1.6;
   --brake-offset: 15%;
+  /* Brake band: the bottom-center area that brakes like the halves steer, the button being
+     its visual anchor. The width is a share of the screen, so the lower corners, where thumbs
+     rest to steer, stay steering; the height (a share of the visible viewport, like the
+     offset) is enough to enclose the button at every size. controls.ts reads the band's box
+     on each touch, so these two knobs are the hit area. */
+  --brake-zone-width: 50%;
+  --brake-zone-height: 38%;
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Rounded', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
@@ -312,6 +319,17 @@ body {
   justify-content: flex-end;
   padding-right: calc(var(--safe-right) + 20px);
   background: linear-gradient(270deg, rgba(255, 79, 163, 0.3), rgba(255, 79, 163, 0) 55%);
+}
+
+.zone-brake {
+  top: auto;
+  bottom: 0;
+  left: 50%;
+  width: var(--brake-zone-width);
+  height: var(--brake-zone-height);
+  transform: translateX(-50%);
+  border-radius: 36px 36px 0 0;
+  background: linear-gradient(0deg, rgba(255, 79, 163, 0.3), rgba(255, 79, 163, 0.08));
 }
 
 .zone .arrow {

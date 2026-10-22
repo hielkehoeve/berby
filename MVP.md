@@ -9,7 +9,7 @@ A mobile-web kart racer with a glam, pastel, fashion-forward look. One player ra
 | Opponent    | Player vs one AI rival (no backend)                           |
 | Platform    | Mobile web / PWA, installable to the home screen              |
 | View        | 3D, camera behind the kart, low-poly glossy pastel            |
-| Controls    | Auto-gas; hold left/right half of the screen to steer; brake button |
+| Controls    | Auto-gas; hold left/right half of the screen to steer; hold the bottom-center band (brake button inside) to brake |
 | Orientation | Landscape only (portrait shows a "rotate your phone" prompt)  |
 | Track       | One track: Malibu beach                                       |
 | Art         | Shapes built in code + free CC0 low-poly packs (Kenney), recolored in the Berby palette |
@@ -56,7 +56,7 @@ One race takes roughly 3 minutes (about 60 s per lap). No menus, no unlocks, no 
 ## Screens and HUD
 
 - **Title**: logo, "Play" button, mute toggle. A full-screen "rotate your phone" overlay while in portrait.
-- **Race HUD**: position (1st / 2nd) top-left, lap `x/3` top-right, race timer top-center. Translucent steering zones on the left and right halves, a brake button bottom-center. Zones fade out after a few seconds of play and reappear on touch.
+- **Race HUD**: position (1st / 2nd) top-left, lap `x/3` top-right, race timer top-center. Translucent steering zones on the left and right halves, a translucent brake band bottom-center with the brake button inside it (the whole band brakes). Zones fade out after a few seconds of play and reappear on touch.
 - **Results**: "You won!" or "Vix won", total time, best lap, "Race again" button.
 
 ## Tech stack

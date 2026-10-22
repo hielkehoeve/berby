@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveInput, resolveSteer } from './controls';
+import { resolveInput, resolveSteer, touchRegion } from './controls';
 
 describe('resolveSteer', () => {
   it('steers left, right, and cancels when both halves are held', () => {
@@ -7,6 +7,26 @@ describe('resolveSteer', () => {
     expect(resolveSteer(true, false)).toBe(-1);
     expect(resolveSteer(false, true)).toBe(1);
     expect(resolveSteer(true, true)).toBe(0);
+  });
+});
+
+describe('touchRegion', () => {
+  const band = { left: 200, right: 600, top: 240, bottom: 360 };
+
+  it('splits the screen into halves when there is no brake band', () => {
+    expect(touchRegion(100, 300, 800, null)).toBe('left');
+    expect(touchRegion(700, 300, 800, null)).toBe('right');
+    expect(touchRegion(400, 300, 800, null)).toBe('right');
+  });
+
+  it('brakes inside the band, edges included, and steers around it', () => {
+    expect(touchRegion(400, 300, 800, band)).toBe('brake');
+    expect(touchRegion(200, 240, 800, band)).toBe('brake');
+    expect(touchRegion(600, 360, 800, band)).toBe('brake');
+    expect(touchRegion(199, 300, 800, band)).toBe('left');
+    expect(touchRegion(601, 300, 800, band)).toBe('right');
+    // Above the band is the road ahead: still steering.
+    expect(touchRegion(300, 239, 800, band)).toBe('left');
   });
 });
 

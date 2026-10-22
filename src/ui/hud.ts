@@ -19,6 +19,8 @@ export interface Hud {
   /** The full-screen touch surface. Attach the steering controls to it. */
   element: HTMLElement;
   brakeButton: HTMLButtonElement;
+  /** The brake band at the bottom center; the controls read its box to classify touches. */
+  brakeZone: HTMLElement;
   show(): void;
   hide(): void;
   update(state: HudState): void;
@@ -41,11 +43,13 @@ export function createHud(parent: HTMLElement): Hud {
   const zoneRight = el('div', 'zone zone-right');
   zoneRight.appendChild(el('span', 'arrow', '›'));
 
+  const zoneBrake = el('div', 'zone zone-brake');
+
   const brakeButton = el('button', 'brake', 'BRAKE');
   brakeButton.type = 'button';
   brakeButton.setAttribute('aria-label', 'Brake');
 
-  element.append(zoneLeft, zoneRight, top, brakeButton);
+  element.append(zoneLeft, zoneRight, zoneBrake, top, brakeButton);
   parent.appendChild(element);
 
   let hintsUntil = 0;
@@ -61,6 +65,7 @@ export function createHud(parent: HTMLElement): Hud {
   return {
     element,
     brakeButton,
+    brakeZone: zoneBrake,
     show() {
       show(element);
     },
@@ -77,6 +82,7 @@ export function createHud(parent: HTMLElement): Hud {
       setText(lap, 'lap', `Lap ${Math.min(state.lap, state.laps)}/${state.laps}`);
       zoneLeft.classList.toggle('active', state.touch.left);
       zoneRight.classList.toggle('active', state.touch.right);
+      zoneBrake.classList.toggle('active', state.touch.brake);
       brakeButton.classList.toggle('active', state.touch.brake);
       element.classList.toggle('hints-hidden', now() > hintsUntil);
     },

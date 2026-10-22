@@ -73,7 +73,11 @@ export function createGame(container: HTMLElement): Game {
     onToggleMute: () => ui.setMuted(audio.toggleMuted()),
   });
   ui.setMuted(audio.isMuted());
-  const controls = createControls({ surface: ui.hud.element, brakeButton: ui.hud.brakeButton });
+  const controls = createControls({
+    surface: ui.hud.element,
+    brakeButton: ui.hud.brakeButton,
+    brakeZone: ui.hud.brakeZone,
+  });
 
   // --- State ---
   let phase: Phase = 'title';

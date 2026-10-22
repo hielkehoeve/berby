@@ -29,6 +29,8 @@ All three streams landed within about 25 minutes of each other; the full check p
 
 **Playwright runs**: with Berby braked to a stop on the straight, Vix was 26 m clear two seconds later and the −10% penalty then let Berby close from 48 m to 25 m over 17 s; from the grid she passed a stationary Berby on her own side of the road. In both runs the occlusion value stayed at 0: the passing behaviour keeps her out of the camera's line of sight, so the fade is the safety net rather than the fix.
 
+**Brake band** (added after the creator's first look at the phone build): the raised button with its bigger hit circle was not the answer; the request was to make braking work like steering, an area rather than a button, with the button kept. The bottom center of the screen is now a brake band, half the screen wide and 38% of it tall (`--brake-zone-width`, `--brake-zone-height` in `src/ui/styles.css`), with the button inside it as the visual anchor. A touch is classified where it starts: a steering thumb that slides across the band keeps steering, a braking thumb keeps braking wherever it goes, and the outer quarters of the screen stay steering so thumbs resting in the lower corners never brake by accident. Verified with Playwright at 780×360: a press in the band left of the button brakes the kart to a stop, a press in a lower corner or on the road ahead steers, the button still brakes.
+
 ## Status
 
-Pushed to `main` for the phone test: the brake button reach, whether Vix now feels like an opponent, and whether her passes look right. The `iteration/005` branch follows the creator's verdict.
+Pushed to `main`; the brake band is on the live build and `iteration/005-vix-overtakes` marks this state. The creator's verdict on Vix as an opponent and on her passes is still open and carries into iteration 6, which starts on game modes.

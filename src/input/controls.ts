@@ -23,6 +23,12 @@ export interface ControlsOptions {
   surface: HTMLElement;
   /** The brake button; it handles its own pointers and never counts as a steer touch. */
   brakeButton: HTMLElement;
+  /**
+   * The band at the bottom center of the screen: a touch that starts inside it brakes for as
+   * long as it is held, the way the halves steer. Its box is read on each touch, so the CSS
+   * knobs in styles.css define the hit area. Optional: a surface without one just steers.
+   */
+  brakeZone?: HTMLElement;
 }
 
 /** Hold left = -1, hold right = +1, both or neither = 0. Pure, for testing. */
@@ -39,6 +45,23 @@ export function resolveInput(touch: TouchState, keys: TouchState): KartInput {
 }
 
 type Side = 'left' | 'right';
+export type Region = Side | 'brake';
+
+/** The box of the brake band in viewport pixels (a DOMRect will do). */
+export interface ZoneRect {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+/** Where a touch starting at (x, y) lands: in the brake band, else the left or right half. Pure. */
+export function touchRegion(x: number, y: number, viewportWidth: number, brakeZone: ZoneRect | null): Region {
+  if (brakeZone && x >= brakeZone.left && x <= brakeZone.right && y >= brakeZone.top && y <= brakeZone.bottom) {
+    return 'brake';
+  }
+  return x < viewportWidth / 2 ? 'left' : 'right';
+}
 
 const STEER_LEFT_KEYS = new Set(['ArrowLeft', 'KeyA']);
 const STEER_RIGHT_KEYS = new Set(['ArrowRight', 'KeyD']);
@@ -46,11 +69,12 @@ const BRAKE_KEYS = new Set(['ArrowDown', 'KeyS', 'Space']);
 
 /**
  * Touch controls: the left half of the screen steers left, the right half steers right, both
- * halves held cancel out, and a brake button sits at the bottom center. Pointer events track
- * each finger by id, so a finger sliding across the middle switches sides and a finger lifted
- * anywhere releases its side. Keyboard works too for desktop development.
+ * halves held cancel out, and a band at the bottom center (with the brake button inside it)
+ * brakes. A touch is classified where it starts: a steering finger sliding across the middle
+ * switches sides but never starts braking, a braking finger keeps braking wherever it slides,
+ * and a finger lifted anywhere releases what it held. Keyboard works too for desktop development.
  */
-export function createControls({ surface, brakeButton }: ControlsOptions): Controls {
+export function createControls({ surface, brakeButton, brakeZone }: ControlsOptions): Controls {
   const steerPointers = new Map<number, Side>();
   const brakePointers = new Set<number>();
   const keys: TouchState = { left: false, right: false, brake: false };
@@ -74,7 +98,9 @@ export function createControls({ surface, brakeButton }: ControlsOptions): Contr
   const onSurfaceDown = (e: PointerEvent) => {
     if (brakeButton.contains(e.target as Node)) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    steerPointers.set(e.pointerId, sideOf(e.clientX));
+    const region = touchRegion(e.clientX, e.clientY, window.innerWidth, brakeZone?.getBoundingClientRect() ?? null);
+    if (region === 'brake') brakePointers.add(e.pointerId);
+    else steerPointers.set(e.pointerId, region);
     notePress();
     try {
       surface.setPointerCapture(e.pointerId);
@@ -87,8 +113,9 @@ export function createControls({ surface, brakeButton }: ControlsOptions): Contr
     if (!steerPointers.has(e.pointerId)) return;
     steerPointers.set(e.pointerId, sideOf(e.clientX));
   };
-  const releaseSteer = (e: PointerEvent) => {
+  const releaseSurface = (e: PointerEvent) => {
     steerPointers.delete(e.pointerId);
+    brakePointers.delete(e.pointerId);
   };
 
   // --- Brake button ---
@@ -138,8 +165,8 @@ export function createControls({ surface, brakeButton }: ControlsOptions): Contr
   brakeButton.style.touchAction = 'none';
   surface.addEventListener('pointerdown', onSurfaceDown);
   surface.addEventListener('pointermove', onSurfaceMove);
-  surface.addEventListener('pointerup', releaseSteer);
-  surface.addEventListener('pointercancel', releaseSteer);
+  surface.addEventListener('pointerup', releaseSurface);
+  surface.addEventListener('pointercancel', releaseSurface);
   brakeButton.addEventListener('pointerdown', onBrakeDown);
   brakeButton.addEventListener('pointerup', releaseBrake);
   brakeButton.addEventListener('pointercancel', releaseBrake);
@@ -161,8 +188,8 @@ export function createControls({ surface, brakeButton }: ControlsOptions): Contr
     dispose() {
       surface.removeEventListener('pointerdown', onSurfaceDown);
       surface.removeEventListener('pointermove', onSurfaceMove);
-      surface.removeEventListener('pointerup', releaseSteer);
-      surface.removeEventListener('pointercancel', releaseSteer);
+      surface.removeEventListener('pointerup', releaseSurface);
+      surface.removeEventListener('pointercancel', releaseSurface);
       brakeButton.removeEventListener('pointerdown', onBrakeDown);
       brakeButton.removeEventListener('pointerup', releaseBrake);
       brakeButton.removeEventListener('pointercancel', releaseBrake);

@@ -28,7 +28,7 @@ export function createTitleScreen(parent: HTMLElement, handlers: TitleHandlers):
   const hint = el(
     'p',
     'hint',
-    'Auto-gas. Hold the left or right half of the screen to steer, tap the bottom button to brake.',
+    'Auto-gas. Hold the left or right side of the screen to steer, hold the bottom middle to brake.',
   );
   hint.style.margin = '0';
   const mute = button('btn btn-icon mute', muteLabel(false), handlers.onToggleMute);
