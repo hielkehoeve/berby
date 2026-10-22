@@ -67,7 +67,13 @@ export function createRace(track: Track): Race {
   let winner: Winner | null = null;
 
   const stepRivalKart = (dt: number) => {
-    stepRival(rival, track, { rivalProgress: rivalProgress.progress, playerProgress: playerProgress.progress }, dt);
+    // `player` lets Vix plan a pass instead of sitting on the player's bumper.
+    stepRival(
+      rival,
+      track,
+      { rivalProgress: rivalProgress.progress, playerProgress: playerProgress.progress, player },
+      dt,
+    );
   };
 
   const race: Race = {

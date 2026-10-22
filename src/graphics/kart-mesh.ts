@@ -19,6 +19,11 @@ export interface KartView {
   object: THREE.Object3D;
   /** Sync the visual to the simulated state (position, heading, wheel steer, lean). */
   update(state: KartState, dt: number): void;
+  /**
+   * Fade the kart so it doesn't hide what's behind it: 0 = solid, 1 = as transparent as it gets
+   * (still recognisable). Called every frame with kartOcclusion() from camera.ts.
+   */
+  setGhost(amount: number): void;
 }
 
 export interface KartLook {
@@ -55,12 +60,30 @@ export interface KartModel {
   group: THREE.Group;
   /** Chassis + driver; leans and bobs. */
   chassis: THREE.Group;
+  /** The merged, vertex-coloured chassis mesh (its own material instance). */
+  body: THREE.Mesh<THREE.BufferGeometry, THREE.MeshToonMaterial>;
+  /** Back-face outline shell around the body (its own material instance). */
+  outline: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   /** Front-left, front-right, rear-left, rear-right pivots (steer the front two). */
   wheelPivots: THREE.Object3D[];
-  /** Spinning wheel meshes inside the pivots. */
-  wheels: THREE.Mesh[];
+  /** Spinning wheel meshes inside the pivots; all four share one material instance. */
+  wheels: THREE.Mesh<THREE.BufferGeometry, THREE.MeshToonMaterial>[];
   triangles: number;
 }
+
+/** Tunables for KartView.setGhost(). */
+export const GHOST = {
+  /** Opacity of the body and wheels at ghost amount 1: see-through but still recognisable. */
+  opacity: 0.25,
+  /** Damping rates (1/s) of the ghost amount toward the requested value: quick in, gentler out. */
+  fadeInRate: 10,
+  fadeOutRate: 5,
+  /**
+   * The outline shell fades out faster than the body and is gone by this ghost amount, so its
+   * back faces never show as a dark smear through the translucent body.
+   */
+  outlineGoneAt: 0.5,
+};
 
 function wheelGeometry(hubColor: number): THREE.BufferGeometry {
   const tyre = paint(new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, 0.26, 12, 1), 0x2d2436);
@@ -165,6 +188,9 @@ export function createKartModel(look: KartLook): KartModel {
     }
   }
 
+  // Every material below is a fresh instance per model (toonMaterial / outlineMaterial construct
+  // one each call; only the gradient ramp texture is shared), so fading one kart never touches
+  // the other or the parked karts.
   const bodyGeom = mergeParts(parts);
   const body = new THREE.Mesh(bodyGeom, toonMaterial(0xffffff, { vertexColors: true }));
   body.castShadow = true;
@@ -178,7 +204,7 @@ export function createKartModel(look: KartLook): KartModel {
   const wheelGeom = wheelGeometry(look.spoilerColor === look.body ? look.accent : look.spoilerColor);
   const wheelMat = toonMaterial(0xffffff, { vertexColors: true });
   const wheelPivots: THREE.Object3D[] = [];
-  const wheels: THREE.Mesh[] = [];
+  const wheels: THREE.Mesh<THREE.BufferGeometry, THREE.MeshToonMaterial>[] = [];
   for (const [x, z] of [
     [-WHEEL_X, -WHEEL_Z],
     [WHEEL_X, -WHEEL_Z],
@@ -199,7 +225,7 @@ export function createKartModel(look: KartLook): KartModel {
     bodyGeom.attributes.position.count / 3 +
     outlineGeom.attributes.position.count / 3 +
     (4 * wheelGeom.attributes.position.count) / 3;
-  return { group, chassis, wheelPivots, wheels, triangles };
+  return { group, chassis, body, outline, wheelPivots, wheels, triangles };
 }
 
 const TOP_SPEED = PLAYER_TUNING.topSpeed;
@@ -217,7 +243,7 @@ export function steerFraction(state: KartState): number {
 
 export function createKartView(variant: KartVariant): KartView {
   const model = createKartModel(KART_LOOKS[variant]);
-  const { group, chassis, wheelPivots, wheels } = model;
+  const { group, chassis, body, outline, wheelPivots, wheels } = model;
   group.name = `kart-${variant}`;
 
   let lean = 0;
@@ -225,6 +251,46 @@ export function createKartView(variant: KartVariant): KartView {
   let steerVis = 0;
   let lastSpeed = 0;
   let phase = variant === 'player' ? 0 : 1.7;
+
+  // Ghost fade. `ghostWanted` is the latest setGhost() request, `ghost` the smoothed amount that
+  // drives the materials. Body and wheels share the toon fade; the outline fades out faster.
+  let ghostWanted = 0;
+  let ghost = 0;
+  let ghosted = false;
+  const fadeMaterials = [body.material, wheels[0].material];
+
+  /** Switch the materials between the opaque and the blended pipeline (recompiles once each way). */
+  function setGhosted(on: boolean) {
+    ghosted = on;
+    for (const m of fadeMaterials) {
+      m.transparent = on;
+      m.depthWrite = !on;
+      m.needsUpdate = true;
+    }
+    const o = outline.material;
+    o.transparent = on;
+    o.depthWrite = !on;
+    o.needsUpdate = true;
+    // While blended, draw the shell under the body so its far faces don't tint the translucent
+    // body; in the opaque pass the depth buffer sorts them and the order is left alone.
+    outline.renderOrder = on ? -1 : 0;
+  }
+
+  function applyGhost(amount: number) {
+    const on = amount > 0;
+    if (on !== ghosted) setGhosted(on);
+    if (!on) {
+      for (const m of fadeMaterials) m.opacity = 1;
+      outline.material.opacity = 1;
+      outline.visible = true;
+      return;
+    }
+    const opacity = lerp(1, GHOST.opacity, amount);
+    for (const m of fadeMaterials) m.opacity = opacity;
+    const outlineOpacity = 1 - clamp(amount / GHOST.outlineGoneAt, 0, 1);
+    outline.material.opacity = outlineOpacity;
+    outline.visible = outlineOpacity > 0;
+  }
 
   return {
     object: group,
@@ -256,6 +322,18 @@ export function createKartView(variant: KartVariant): KartView {
       chassis.rotation.z = lean;
       chassis.rotation.x = pitch + (state.onRoad ? 0 : Math.sin(phase * 0.7) * 0.012 * speedN);
       chassis.position.y = Math.sin(phase) * bobAmp;
+
+      // Ghost: ease toward the requested amount so the fade never pops, snapping once it is
+      // close so the materials return to the opaque pipeline instead of lingering at 0.001.
+      if (ghost !== ghostWanted) {
+        const rate = ghostWanted > ghost ? GHOST.fadeInRate : GHOST.fadeOutRate;
+        ghost = lerp(ghost, ghostWanted, 1 - Math.exp(-rate * step));
+        if (Math.abs(ghost - ghostWanted) < 0.004) ghost = ghostWanted;
+        applyGhost(ghost);
+      }
+    },
+    setGhost(amount) {
+      ghostWanted = clamp(amount, 0, 1);
     },
   };
 }

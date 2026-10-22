@@ -31,9 +31,9 @@ export function createHud(parent: HTMLElement): Hud {
   element.setAttribute('aria-label', 'Race HUD');
 
   const top = el('div', 'hud-top');
-  const position = el('div', 'hud-position', '1st');
-  const timer = el('div', 'hud-timer', '0:00.0');
-  const lap = el('div', 'hud-lap', 'Lap 1/3');
+  const position = el('div', 'hud-pill hud-position', '1st');
+  const timer = el('div', 'hud-pill hud-timer', '0:00.0');
+  const lap = el('div', 'hud-pill hud-lap', 'Lap 1/3');
   top.append(position, timer, lap);
 
   const zoneLeft = el('div', 'zone zone-left');

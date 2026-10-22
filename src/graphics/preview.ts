@@ -3,15 +3,16 @@
 // physics, and lets you switch between the chase camera and a free orbit camera.
 //
 // Keys: C chase/orbit toggle, T top-down orbit view, Space pause, R restart at the line,
-//       Left/Right scrub 20 m, Up/Down change speed, W toggle wireframe.
-// URL params: ?d=<metres> start distance, ?speed=<m/s>, ?orbit=1, ?top=1.
+//       Left/Right scrub 20 m, Up/Down change speed, W toggle wireframe,
+//       G park Vix 3.5 m behind Berby (ghost fade test), V cycle her lateral offset 0 / +1.5 / -1.5 m.
+// URL params: ?d=<metres> start distance, ?speed=<m/s>, ?orbit=1, ?top=1, ?tail=1, ?lat=<m>.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { buildTrack } from '../sim/track';
 import { MALIBU } from '../tracks/malibu';
 import { buildWorld } from './world';
 import { createKartView } from './kart-mesh';
-import { createChaseCamera, snapChaseCamera, updateChaseCamera } from './camera';
+import { createChaseCamera, kartOcclusion, snapChaseCamera, updateChaseCamera } from './camera';
 import type { KartState } from '../shared/types';
 import { PLAYER_TUNING } from '../sim/tuning';
 import { clamp, forwardToHeading, leftOf, lerp, wrapAngle, wrapDistance } from '../shared/math';
@@ -46,6 +47,12 @@ let speed = Number(params.get('speed') ?? PLAYER_TUNING.topSpeed);
 let paused = false;
 let orbitMode = params.get('orbit') === '1' || params.get('top') === '1';
 let wire = false;
+// Ghost-fade test pose: Vix parked close behind Berby instead of weaving 18 m ahead.
+let tailgate = params.get('tail') === '1';
+let tailLateral = Number(params.get('lat') ?? 0);
+const TAIL_BEHIND = 3.5;
+const TAIL_SIDE = 1.5;
+let occlusion = 0;
 
 const makeState = (): KartState => ({ position: { x: 0, z: 0 }, heading: 0, speed: 0, steerAngle: 0, onRoad: true });
 const playerState = makeState();
@@ -69,6 +76,17 @@ function drive(state: KartState, d: number, lateral: number, dt: number, steerPr
   state.steerAngle = lerp(steerPrev, steer, 1 - Math.exp(-8 * dt));
   state.onRoad = Math.abs(lateral) <= track.definition.roadWidth / 2;
   return state.steerAngle;
+}
+
+/** Where Vix drives relative to Berby: metres along the centerline and lateral (+ = left). */
+function rivalPose(elapsed: number): { along: number; lateral: number } {
+  if (tailgate) return { along: -TAIL_BEHIND, lateral: tailLateral };
+  return { along: 18, lateral: Math.sin(elapsed * 0.6) * 2.5 };
+}
+
+function setTailgate(on: boolean, lateral = tailLateral) {
+  tailgate = on;
+  tailLateral = lateral;
 }
 
 function setOrbit(on: boolean, top = false) {
@@ -131,6 +149,15 @@ window.addEventListener('keydown', (e) => {
     case 'W':
       setWire(!wire);
       break;
+    case 'g':
+    case 'G':
+      setTailgate(!tailgate);
+      break;
+    case 'v':
+    case 'V':
+      // 0 -> left 1.5 m -> right 1.5 m -> 0
+      setTailgate(true, tailLateral === 0 ? TAIL_SIDE : tailLateral > 0 ? -TAIL_SIDE : 0);
+      break;
   }
 });
 
@@ -147,7 +174,10 @@ let fps = 0;
 
 // Prime both karts, then snap the camera.
 drive(playerState, distance, 0, 0, 0);
-drive(rivalState, distance + 18, 2.5, 0, 0);
+{
+  const pose = rivalPose(0);
+  drive(rivalState, distance + pose.along, pose.lateral, 0, 0);
+}
 setOrbit(orbitMode, params.get('top') === '1');
 
 const timer = new THREE.Timer();
@@ -161,14 +191,17 @@ const frame = () => {
   }
   const step = paused ? 0 : dt;
   playerSteer = drive(playerState, distance, 0, step, playerSteer);
-  const weave = Math.sin(elapsed * 0.6) * 2.5;
-  rivalSteer = drive(rivalState, distance + 18, weave, step, rivalSteer);
+  const pose = rivalPose(elapsed);
+  rivalSteer = drive(rivalState, distance + pose.along, pose.lateral, step, rivalSteer);
   player.update(playerState, step);
   rival.update(rivalState, step);
   world.update(step, elapsed, playerState.position);
 
   if (orbitMode) orbit.update();
   else updateChaseCamera(camera, playerState, dt);
+  // Same call the game loop makes: fade Vix when she sits between the camera and Berby.
+  occlusion = kartOcclusion(camera, playerState, rivalState);
+  rival.setGhost(occlusion);
 
   renderer.render(scene, camera);
 
@@ -183,7 +216,8 @@ const frame = () => {
       hud.textContent =
         `${fps.toFixed(0)} fps | ${info.calls} calls | ${(info.triangles / 1000).toFixed(1)}k tris | ` +
         `d=${distance.toFixed(0)} m of ${track.length.toFixed(0)} | ${speed} m/s | ${orbitMode ? 'orbit' : 'chase'}${paused ? ' | paused' : ''}` +
-        ` | pos ${playerState.position.x.toFixed(0)},${playerState.position.z.toFixed(0)}`;
+        ` | pos ${playerState.position.x.toFixed(0)},${playerState.position.z.toFixed(0)}` +
+        ` | occlusion ${occlusion.toFixed(2)}${tailgate ? ` | Vix ${TAIL_BEHIND} m behind, lateral ${tailLateral}` : ''}`;
     }
   }
 };
@@ -213,9 +247,14 @@ Object.assign(window, {
     jump: (d: number) => {
       distance = d;
       playerSteer = drive(playerState, distance, 0, 0, 0);
-      rivalSteer = drive(rivalState, distance + 18, 2.5, 0, 0);
+      const pose = rivalPose(elapsed);
+      rivalSteer = drive(rivalState, distance + pose.along, pose.lateral, 0, 0);
       snapChaseCamera(camera, playerState);
     },
+    /** Park Vix 3.5 m behind Berby (lateral in metres, + = left) to check the ghost fade. */
+    tailgate: setTailgate,
+    /** Latest kartOcclusion() value (0 = Vix clear of the view line, 1 = squarely in it). */
+    occlusion: () => occlusion,
     /** Render one frame and POST it as JPEG to a local collector (dev screenshots). */
     shoot: async (name: string, url = 'http://localhost:5175/shot') => {
       renderer.render(scene, camera);

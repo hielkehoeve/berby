@@ -10,8 +10,8 @@ else.
 | File | Exports | Notes |
 |------|---------|-------|
 | `world.ts` | `buildWorld(track): World` | Sky dome + sun, fog, lights, sand, animated ocean, road ribbon, barrier walls, all scenery. `World.group` holds the lights; assign `World.background` / `World.fog` to the scene; call `World.update(dt, elapsed, focus)` every frame. |
-| `kart-mesh.ts` | `createKartView(variant): KartView`, `createKartModel(look): KartModel`, `KART_LOOKS`, `steerFraction(state)`, `WHEEL_RADIUS` | Racers (`'player'` = Berby, hot pink, heart spoiler; `'rival'` = Vix, lavender, star) and the model builder reused for parked karts. |
-| `camera.ts` | `createChaseCamera(aspect)`, `updateChaseCamera(camera, target, dt)`, `snapChaseCamera(camera, target)`, `CHASE` tunables | Smoothed chase camera; `snapChaseCamera` resets it behind the kart (race start). |
+| `kart-mesh.ts` | `createKartView(variant): KartView`, `createKartModel(look): KartModel`, `KART_LOOKS`, `steerFraction(state)`, `WHEEL_RADIUS`, `GHOST` tunables | Racers (`'player'` = Berby, hot pink, heart spoiler; `'rival'` = Vix, lavender, star) and the model builder reused for parked karts. `KartView.setGhost(amount)` fades a kart (see below). |
+| `camera.ts` | `createChaseCamera(aspect)`, `updateChaseCamera(camera, target, dt)`, `snapChaseCamera(camera, target)`, `kartOcclusion(camera, target, other)`, `CHASE` and `OCCLUSION` tunables | Smoothed chase camera; `snapChaseCamera` resets it behind the kart (race start); `kartOcclusion` says how much one kart hides another. |
 | `materials.ts` | `toonMaterial`, `toonGradient`, `outlineMaterial`, `paint`, `mergeParts`, `placement`, `canvasTexture`, `heartShape`, `starShape`, `rng`, colour constants | Shared helpers. |
 | `preview.ts` + `/preview.html` | dev only | Standalone harness, see below. Not referenced from `index.html`. |
 | `../tracks/malibu.ts` | `MALIBU: TrackDefinition` | Control points of the Malibu Sunset Loop (~1215 m, min radius ~25 m). |
@@ -30,7 +30,32 @@ scene.fog = world.fog;
 ```
 
 Each frame: step the sim, then `kartView.update(state, dt)`, `world.update(dt, elapsed, player.position)`,
-`updateChaseCamera(camera, player, dt)`, render. The world's shadow camera follows `focus`.
+`updateChaseCamera(camera, player, dt)`, `rivalView.setGhost(kartOcclusion(camera, player, rival))`,
+render. The world's shadow camera follows `focus`.
+
+## Occlusion and ghost fade
+
+A tailgating Vix sits exactly where the chase camera looks, hiding Berby. Two pieces fix that:
+
+- `kartOcclusion(camera, target, other): number` (camera.ts) is a cheap per-frame test, no
+  allocations. Both karts are reduced to a point `OCCLUSION.kartHeight` (0.8 m) above the ground
+  and `other` is projected onto the segment from `camera.position` to `target`. It counts only
+  while its parameter t lies in `OCCLUSION.tMin…tMax` (0.05…0.95, soft edges `tSoft` = 0.1 wide),
+  and the result is `1 - smoothstep(perpendicular distance, inner, outer)` with `inner` = 1.0 m
+  (fully blocking) and `outer` = 2.4 m (clear). Using the true 3D line means a kart just in front
+  of the camera but below its view line scores low, as it should.
+- `KartView.setGhost(amount)` (kart-mesh.ts) stores the request; `update(state, dt)` eases the
+  applied amount toward it (`GHOST.fadeInRate` 10/s, `fadeOutRate` 5/s) and sets the opacity of
+  the body and wheel materials to `lerp(1, GHOST.opacity = 0.25, amount)`. The outline shell fades
+  faster and is hidden from `GHOST.outlineGoneAt` = 0.5, drawn under the body meanwhile
+  (`renderOrder -1`) so its back faces don't tint the translucent body. `transparent = true` and
+  `depthWrite = false` are set only on the solid→ghost transition and restored on the way back
+  (with one `needsUpdate` each way, which swaps the shader variant; the first switch compiles it).
+  Shadows keep casting at full strength. Every kart owns its material instances, so Berby and the
+  parked karts never fade along.
+
+In the preview, `G` parks Vix 3.5 m behind Berby on the centerline and `V` cycles her 1.5 m to
+either side; the HUD shows the live occlusion value.
 
 ## Coordinate conventions
 
@@ -120,6 +145,8 @@ open http://localhost:5174/berby/preview.html
 
 Drives both karts along the centerline (no sim physics) with the chase camera. Keys: `C`
 chase/orbit, `T` top-down, `Space` pause, `R` restart, `←/→` scrub 20 m, `↑/↓` speed, `W`
-wireframe. URL params: `?d=400`, `?speed=15`, `?orbit=1`, `?top=1`. `window.__preview` exposes
-the scene, `jump(d)`, `budget()` (triangles per mesh) and `shoot(name)` (POSTs a JPEG of the
-frame to a local collector on port 5175, for scripted screenshots).
+wireframe, `G` Vix tailgates 3.5 m behind Berby (ghost fade), `V` cycles her lateral offset
+0 / +1.5 / -1.5 m. URL params: `?d=400`, `?speed=15`, `?orbit=1`, `?top=1`, `?tail=1`, `?lat=1.5`.
+`window.__preview` exposes the scene, `jump(d)`, `tailgate(on, lateral)`, `occlusion()`,
+`budget()` (triangles per mesh) and `shoot(name)` (POSTs a JPEG of the frame to a local collector
+on port 5175, for scripted screenshots).

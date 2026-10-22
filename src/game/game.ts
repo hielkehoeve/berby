@@ -11,7 +11,7 @@ import { PLAYER_TUNING } from '../sim/tuning';
 import { MALIBU } from '../tracks/malibu';
 import { buildWorld } from '../graphics/world';
 import { createKartView } from '../graphics/kart-mesh';
-import { createChaseCamera, snapChaseCamera, updateChaseCamera } from '../graphics/camera';
+import { createChaseCamera, kartOcclusion, snapChaseCamera, updateChaseCamera } from '../graphics/camera';
 import { createRenderer } from '../engine/renderer';
 import { createLoop } from '../engine/loop';
 import { createControls } from '../input/controls';
@@ -78,6 +78,14 @@ export function createGame(container: HTMLElement): Game {
   // --- State ---
   let phase: Phase = 'title';
   let race: Race = createRace(track);
+
+  // Compile the translucent variant of the kart shader now, so the first time Vix tailgates and
+  // fades there is no hitch mid-race. A long dt on the way back snaps the materials to opaque.
+  rivalView.setGhost(1);
+  rivalView.update(race.rival, 0.2);
+  gfx.renderer.compile(scene, camera);
+  rivalView.setGhost(0);
+  rivalView.update(race.rival, 5);
   let countdownTime = 0;
   let countdownShown = -1;
   let resultsShown = false;
@@ -90,7 +98,9 @@ export function createGame(container: HTMLElement): Game {
 
   /** The player's input for this step: autopilot or an override in dev, otherwise the controls. */
   function playerInput(dt: number): KartInput {
-    if (dev.autopilot) return rivalInput(race.player, track, { rivalProgress: 0, playerProgress: 0 }, dt);
+    if (dev.autopilot) {
+      return rivalInput(race.player, track, { rivalProgress: 0, playerProgress: 0, player: race.rival }, dt);
+    }
     return dev.override ?? controls.getInput();
   }
 
@@ -187,8 +197,11 @@ export function createGame(container: HTMLElement): Game {
 
     if (phase === 'title') {
       orbitCamera(elapsed);
+      rivalView.setGhost(0);
     } else {
       updateChaseCamera(camera, race.player, dt);
+      // A tailgating Vix would otherwise hide the player from the chase camera.
+      rivalView.setGhost(kartOcclusion(camera, race.player, race.rival));
     }
 
     world.update(dt, elapsed, race.player.position);
@@ -254,6 +267,8 @@ export function createGame(container: HTMLElement): Game {
         rivalLap: race.rivalProgress.lap,
         winner: race.winner,
         fps,
+        /** How much Vix is blocking the camera's view of the player right now (0..1). */
+        occlusion: kartOcclusion(camera, race.player, race.rival),
         // World positions, to check which object the camera follows and where each view sits.
         positions: {
           player: { ...race.player.position },

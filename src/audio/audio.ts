@@ -62,7 +62,12 @@ export function createAudio(): GameAudio {
     const Ctor =
       window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return null;
-    ctx = new Ctor();
+    try {
+      ctx = new Ctor();
+    } catch {
+      // A failing AudioContext must never stop the game from starting: Play calls unlock() first.
+      return null;
+    }
     master = ctx.createGain();
     master.gain.value = muted ? 0 : 1;
     master.connect(ctx.destination);

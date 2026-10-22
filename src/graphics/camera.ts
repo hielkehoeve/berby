@@ -148,3 +148,59 @@ export function updateChaseCamera(camera: THREE.PerspectiveCamera, target: KartS
     camera.updateProjectionMatrix();
   }
 }
+
+/** Tunables for kartOcclusion(). A kart is ~1.6 m wide and ~1.2 m tall. */
+export const OCCLUSION = {
+  /** Height above the ground of the point each kart is reduced to (about the driver's torso). */
+  kartHeight: 0.8,
+  /**
+   * Where along the camera→target segment the other kart counts (0 = at the camera, 1 = at the
+   * target). Outside this band it is behind the camera or beyond the target.
+   */
+  tMin: 0.05,
+  tMax: 0.95,
+  /** Width in t of the soft edges at tMin and tMax, so the result never jumps. */
+  tSoft: 0.1,
+  /** Perpendicular distance from the view line below which the view is fully blocked, metres. */
+  inner: 1.0,
+  /** ...and above which the other kart is not in the way at all. Smoothstep in between. */
+  outer: 2.4,
+};
+
+/** Hermite smoothstep of x over [edge0, edge1]. */
+function smoothstep(x: number, edge0: number, edge1: number): number {
+  const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+// Scratch vectors for kartOcclusion(): it runs every frame, so it never allocates.
+const occToTarget = new THREE.Vector3();
+const occToOther = new THREE.Vector3();
+const occPerp = new THREE.Vector3();
+
+/**
+ * How much `other` sits between the camera and `target`: 0 = not in the way at all, 1 = squarely
+ * blocking the view of the target. Feeds KartView.setGhost() so a tailgating kart fades.
+ *
+ * Projects `other` (at OCCLUSION.kartHeight) onto the segment from the camera's world position
+ * to `target` (also at kartHeight). It counts only while it lies between the two, and the amount
+ * falls off with its perpendicular distance from that line (full below `inner`, none above
+ * `outer`).
+ */
+export function kartOcclusion(camera: THREE.PerspectiveCamera, target: KartState, other: KartState): number {
+  const c = camera.position;
+  const h = OCCLUSION.kartHeight;
+  occToTarget.set(target.position.x - c.x, h - c.y, target.position.z - c.z);
+  occToOther.set(other.position.x - c.x, h - c.y, other.position.z - c.z);
+
+  const len2 = occToTarget.lengthSq();
+  if (len2 < 1e-6) return 0;
+  const t = occToOther.dot(occToTarget) / len2;
+  const { tMin, tMax, tSoft } = OCCLUSION;
+  if (t <= tMin || t >= tMax) return 0;
+  const along = smoothstep(t, tMin, tMin + tSoft) * (1 - smoothstep(t, tMax - tSoft, tMax));
+
+  occPerp.copy(occToOther).addScaledVector(occToTarget, -t);
+  const across = 1 - smoothstep(occPerp.length(), OCCLUSION.inner, OCCLUSION.outer);
+  return along * across;
+}

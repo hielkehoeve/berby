@@ -8,8 +8,13 @@ import { MALIBU } from '../tracks/malibu';
 import { createKartState, resolveKartCollision } from './kart';
 import { createRaceProgress, updateRaceProgress } from './race';
 import { type RivalContext, rivalRubberBandFactor, stepRival } from './rival';
+import { type PassResult, passScenario } from './scenarios';
 import { buildTrack, curvatureAt } from './track';
 import { PLAYER_TUNING, RIVAL_TUNING, RUBBER_BAND } from './tuning';
+
+/** The game's grid slots (src/game/race.ts GRID): meters before the line, lateral offset. */
+const GRID_PLAYER = { back: 8, lateral: -2.5 };
+const GRID_RIVAL = { back: 14, lateral: 2.5 };
 
 const enabled =
   (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.BERBY_REPORT === '1';
@@ -30,7 +35,7 @@ interface Runner {
   name: string;
   kart: KartState;
   progress: RaceProgress;
-  context: (other: RaceProgress) => RivalContext;
+  context: (other: Runner) => RivalContext;
   onRoadSteps: number;
   maxAbsLateral: number;
   minSpeed: number;
@@ -53,7 +58,7 @@ function runRace(runners: Runner[], timeLimit = 400): number {
   let t = 0;
   let steps = 0;
   while (t < timeLimit && runners.some((r) => !r.progress.finished)) {
-    runners.forEach((r, i) => stepRival(r.kart, track, r.context(runners[(i + 1) % runners.length].progress), DT));
+    runners.forEach((r, i) => stepRival(r.kart, track, r.context(runners[(i + 1) % runners.length]), DT));
     if (runners.length === 2) resolveKartCollision(runners[0].kart, runners[1].kart);
     t += DT;
     steps++;
@@ -109,7 +114,7 @@ describe.skipIf(!enabled)('simulation report', () => {
       const standIn = runner('stand-in', -3, () => handicap);
       const rival = runner('Vix', 3, (other) =>
         banded
-          ? { rivalProgress: rival.progress.progress, playerProgress: other.progress }
+          ? { rivalProgress: rival.progress.progress, playerProgress: other.progress.progress }
           : { rivalProgress: 0, playerProgress: 0 },
       );
       runRace([standIn, rival]);
@@ -127,7 +132,37 @@ describe.skipIf(!enabled)('simulation report', () => {
       `  with rubber band:    Vix ${f(banded.rival.progress.finishTime ?? NaN)} s, stand-in ${f(banded.standIn.progress.finishTime ?? NaN)} s, gap ${f(gap(banded))} s`,
     );
     out();
+
+    // Overtaking: a slower player (same AI, top speed 17 m/s, about a 62 s lap) starts 10 m
+    // ahead; Vix is banded and knows where it is. Once on the seaside straight, once in the
+    // hill curve. The player's AI ignores Vix, so any contact is the player's doing.
+    const passLine = (r: PassResult) =>
+      r.passedAt < 0
+        ? 'not passed within 30 s'
+        : `passed after ${f(r.passedAt)} s, ${r.overlapSteps} overlapping steps, on road ${f(100 * r.onRoad)}%, max |lateral| ${f(r.maxAbsLateral)} m, ${r.fellBehindAfterPass ? 'LOST the place again' : 'stayed ahead'}, ${f(r.finalGap, 0)} m ahead after 30 s`;
+    out('Overtaking a slower player (same AI, top speed 17 m/s, starting 10 m ahead):');
+    out(`  on the seaside straight: ${passLine(passScenario(track, 20, 17, 0))}`);
+    out(`  in the hill curve:       ${passLine(passScenario(track, 640, 17, 0))}`);
+    out();
+
+    // Equal AI: a stand-in with the same tuning, no band, no handicap, unaware of Vix, from the
+    // player's grid slot; Vix from hers, banded and aware of the stand-in.
+    const equalStandIn = runner('stand-in', GRID_PLAYER.lateral, () => ({ rivalProgress: 0, playerProgress: 0 }));
+    equalStandIn.kart = gridKart(GRID_PLAYER.lateral, GRID_PLAYER.back);
+    const equalRival = runner('Vix', GRID_RIVAL.lateral, (other) => ({
+      rivalProgress: equalRival.progress.progress,
+      playerProgress: other.progress.progress,
+      player: other.kart,
+    }));
+    equalRival.kart = gridKart(GRID_RIVAL.lateral, GRID_RIVAL.back);
+    const equalSteps = runRace([equalStandIn, equalRival]);
+    out('Equal stand-in (same AI, no band, no handicap, unaware of Vix) vs Vix from the real grid:');
+    out(
+      `  Vix ${f(equalRival.progress.finishTime ?? NaN)} s, stand-in ${f(equalStandIn.progress.finishTime ?? NaN)} s, gap ${f((equalStandIn.progress.finishTime ?? NaN) - (equalRival.progress.finishTime ?? NaN))} s (+ = Vix first), Vix on road ${f((100 * equalRival.onRoadSteps) / equalSteps)}%`,
+    );
+    out();
     out('Targets: Vix lap 55–65 s, on road ≥ 97%, banded gap 1–4 s and under half the unbanded gap.');
+    out('Targets (iteration 5): Vix lap 56.5–57.5 s, pass within 12 s and stay ahead, equal-AI gap within ±2 s.');
 
     console.log(lines.join('\n'));
   });

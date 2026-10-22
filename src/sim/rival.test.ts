@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { KartState, RaceProgress, Track, Vec2 } from '../shared/types';
 import { TAU, forwardToHeading, leftOf } from '../shared/math';
 import { MALIBU } from '../tracks/malibu';
-import { createKartState, resolveKartCollision } from './kart';
+import { KART_RADIUS, createKartState, resolveKartCollision } from './kart';
 import { createRaceProgress, updateRaceProgress } from './race';
 import { type RivalContext, rivalInput, rivalRubberBandFactor, stepRival } from './rival';
+import { kartAt, passScenario } from './scenarios';
 import { buildTrack } from './track';
-import { PLAYER_TUNING, RUBBER_BAND } from './tuning';
+import { OVERTAKE_TUNING, PLAYER_TUNING, RUBBER_BAND } from './tuning';
 
 const track = buildTrack(MALIBU);
 
@@ -78,6 +79,41 @@ describe('rivalInput', () => {
     expect(rivalInput(right, track, { rivalProgress: 0, playerProgress: 0 }, 1 / 60).steer).toBeLessThan(0);
   });
 
+  it('moves to the free side of a player ahead, and lifts instead of ramming one in its path', () => {
+    const level = { rivalProgress: 0, playerProgress: 0 };
+    // 60 m past the line on the seaside straight; alone, a kart on the centerline barely steers.
+    const alone = kartAt(track, 60, 0);
+    alone.speed = 20;
+    const aloneInput = rivalInput(alone, track, level, 1 / 60);
+    expect(Math.abs(aloneInput.steer)).toBeLessThan(0.3);
+
+    // A player 10 m ahead on the left: the rival heads right (positive steer), still flat out.
+    const playerLeft = kartAt(track, 70, 2);
+    playerLeft.speed = 18;
+    const rival = kartAt(track, 60, 0);
+    rival.speed = 20;
+    const snapshot = JSON.stringify([rival, playerLeft]);
+    const toRight = rivalInput(rival, track, { ...level, player: playerLeft }, 1 / 60);
+    expect(JSON.stringify([rival, playerLeft])).toBe(snapshot); // still pure
+    expect(toRight.steer).toBeGreaterThan(aloneInput.steer + 0.15);
+    expect(toRight.throttle).toBe(1);
+    expect(toRight.brake).toBe(0);
+
+    // The same player on the right: the rival heads left.
+    const playerRight = kartAt(track, 70, -2);
+    playerRight.speed = 18;
+    const toLeft = rivalInput(rival, track, { ...level, player: playerRight }, 1 / 60);
+    expect(toLeft.steer).toBeLessThan(aloneInput.steer - 0.15);
+
+    // A slower player 3 m (bumper to bumper) ahead in the path: lift and brake a little.
+    const bumper = kartAt(track, 60 + 3 + 2 * KART_RADIUS, 0);
+    bumper.speed = 16;
+    const blocked = rivalInput(rival, track, { ...level, player: bumper }, 1 / 60);
+    expect(blocked.throttle).toBe(0);
+    expect(blocked.brake).toBeGreaterThan(0);
+    expect(blocked.brake).toBeLessThanOrEqual(OVERTAKE_TUNING.blockMaxBrake);
+  });
+
   it('brakes when arriving too fast at a corner', () => {
     // A 30 m radius circle cannot be taken at top speed with the rival's planning grip.
     const controlPoints: Vec2[] = [];
@@ -103,7 +139,9 @@ describe('rubber band', () => {
     expect(rivalRubberBandFactor({ rivalProgress: 500, playerProgress: 0 })).toBeCloseTo(1 - RUBBER_BAND.maxPenalty, 9);
     const half = rivalRubberBandFactor({ rivalProgress: 0, playerProgress: RUBBER_BAND.bonusRange / 2 });
     expect(half).toBeCloseTo(1 + RUBBER_BAND.maxBonus / 2, 9);
-    expect(RUBBER_BAND.maxBonus).toBeLessThanOrEqual(0.1);
+    // "Light" rubber-banding: a weaker player must still get a close race, a stronger one must
+    // never see Vix vanish, but the band must not be the whole race (docs/log/005: +11% / -10%).
+    expect(RUBBER_BAND.maxBonus).toBeLessThanOrEqual(0.12);
     expect(RUBBER_BAND.maxPenalty).toBeLessThanOrEqual(0.1);
   });
 
@@ -160,6 +198,46 @@ describe('headless races on Malibu', () => {
       expect(lap).toBeGreaterThan(40);
       expect(lap).toBeLessThan(80);
     }
+  });
+
+  it('overtakes a slower player cleanly and stays ahead', () => {
+    // The slow player drives the same line with the rival AI but a lower top speed (about a
+    // 62 s lap), starting 10 m ahead. Once on the straight, once in the hill curve.
+    for (const start of [20, 640]) {
+      const r = passScenario(track, start, 17, 0);
+      expect(r.passedAt).toBeGreaterThan(0);
+      expect(r.passedAt).toBeLessThan(12);
+      expect(r.onRoad).toBeGreaterThanOrEqual(0.97);
+      expect(r.maxAbsLateral).toBeLessThan(MALIBU.barrierOffset);
+      // Contact, if any, is a brief bump (the player's AI does not know the rival is there).
+      expect(r.overlapSteps).toBeLessThanOrEqual(15);
+      expect(r.fellBehindAfterPass).toBe(false);
+      expect(r.finalGap).toBeGreaterThan(20);
+    }
+  });
+
+  it('finishes within 2 s of an equal, un-banded stand-in from the real grid', () => {
+    // The stand-in drives the same AI with no rubber band and no knowledge of the rival, from
+    // the player's grid slot; Vix starts from hers, rubber-banded and aware of the stand-in.
+    const standIn: Runner = {
+      kart: gridKart(track, -2.5, 8),
+      progress: createRaceProgress(),
+      context: () => ({ rivalProgress: 0, playerProgress: 0 }),
+    };
+    const rival: Runner = {
+      kart: gridKart(track, 2.5, 14),
+      progress: createRaceProgress(),
+      context: (other) => ({
+        rivalProgress: rival.progress.progress,
+        playerProgress: other.progress,
+        player: standIn.kart,
+      }),
+    };
+    const result = runRace([standIn, rival], 1 / 60);
+    expect(standIn.progress.finished).toBe(true);
+    expect(rival.progress.finished).toBe(true);
+    expect(Math.abs(standIn.progress.finishTime! - rival.progress.finishTime!)).toBeLessThan(2);
+    expect(result.onRoadSteps[1] / result.steps).toBeGreaterThanOrEqual(0.97);
   });
 
   it('the rubber band keeps the finish gap to a handicapped stand-in player small', () => {
