@@ -118,12 +118,13 @@ export function createGame(container: HTMLElement): Game {
   let fpsTime = 0;
   let fps = 0;
 
-  /** The player's input for this step: autopilot or an override in dev, otherwise the controls. */
+  /** The player's input for this step: an override or the autopilot in dev, otherwise the controls. */
   function playerInput(dt: number): KartInput {
+    if (dev.override) return dev.override;
     if (dev.autopilot) {
       return rivalInput(race.player, track, { rivalProgress: 0, playerProgress: 0, player: race.rival }, dt);
     }
-    return dev.override ?? controls.getInput();
+    return controls.getInput();
   }
 
   const hudState = () => ({

@@ -13,14 +13,17 @@ description: Launch Berby in Chrome, drive a race with the dev autopilot or the 
 
 The game exposes a dev-only hook, `window.__berby` (only when `import.meta.env.DEV`):
 
-- `__berby.phase` — `'title' | 'countdown' | 'racing' | 'finished'`.
-- `__berby.play()` — same as tapping Play (unlocks audio, starts the countdown).
+- `__berby.phase` — `'menu' | 'countdown' | 'racing' | 'finished'`.
+- `__berby.play(modeId)` — start a mode from the menu without the fullscreen request: `'race'` (default), `'cup'`, `'ghost'`, `'rush'`, `'tide'`, `'hotseat'` (the ids in `src/modes/registry.ts`).
 - `__berby.autopilot(true|false)` — the player kart is driven by the rival AI; `false` returns control to touch/keyboard.
 - `__berby.input({ steer, brake })` — override the player input for scripted moves (`null` clears it).
-- `__berby.state()` — `{ phase, time, lap, position, playerSpeed, playerOnRoad, rivalLap, fps }`; `fps` is a rolling average over the last second.
-- `__berby.raceAgain()` — tap "Race again" on the results screen.
+- `__berby.action()` — press the mode action button (use an item).
+- `__berby.state()` — `{ phase, mode, run, time, lap, position, playerSpeed, playerOnRoad, rivalLap, winner, fps, hud, finish, occlusion, positions }`; `hud` is what the mode shows on the HUD, `finish` the results card or intermission once the run ended (`null` before), `fps` a rolling average over the last second.
+- `__berby.primary()` — the primary button of the results card (race again, or the next run after an intermission); `__berby.menu()` — back to the main menu.
 
-A standard run: screenshot the title → `__berby.play()` → wait 4 s → screenshot (GO banner / grid) → `__berby.autopilot(true)` → poll `__berby.state()` every ~10 s until `phase === 'finished'` (about 3 minutes; take a screenshot at the hairpin and the palm tunnel when `lap` changes) → screenshot the results card → `__berby.raceAgain()` once to verify the reset.
+A standard run: screenshot the menu → `__berby.play('race')` → wait 4 s → screenshot (GO banner / grid) → `__berby.autopilot(true)` → poll `__berby.state()` every ~10 s until `phase === 'finished'` (about 3 minutes; take a screenshot at the hairpin and the palm tunnel when `lap` changes) → screenshot the results card → `__berby.primary()` once to verify the reset → `__berby.menu()`.
+
+Per mode, the quick checks: `cup` — the action button appears after a box (`state().hud.action`), `__berby.action()` fires it; `ghost` — a second run shows the ghost kart and a delta near 0.00 under the autopilot; `rush` — the score rises on the center lane, the run ends at 0 s; `tide` — `__berby.input({ brake: 1 })` lets the tide catch the kart within seconds; `hotseat` — run 1 ends in an intermission, `__berby.primary()` starts run 2 with the ghost.
 
 For handling checks, use `__berby.input({steer: 1, brake: 0})` for a second, then `null`, and watch `playerSpeed`/`playerOnRoad`; keyboard events through the `computer` tool cannot be held down, so prefer the hook.
 

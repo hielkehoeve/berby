@@ -77,6 +77,10 @@ export function createRace(track: Track, options: RaceOptions = {}): Race {
   const rival = createKartState(r.position, r.heading);
   const playerProgress = createRaceProgress();
   const rivalProgress = createRaceProgress();
+  // Progress is valid on the grid (about -8 m for the player), so modes can read it before the
+  // first step, and lap 1 is timed from GO rather than from the first update.
+  updateRaceProgress(playerProgress, player, track, 0);
+  updateRaceProgress(rivalProgress, rival, track, 0);
   let time = 0;
   let finished = false;
   let winner: Winner | null = null;

@@ -26,6 +26,8 @@ Berby is a mobile-web kart racer (player vs an AI rival, one Malibu track) built
 - Coordinates: Y up, ground is the XZ plane, heading 0 faces −Z (`mesh.rotation.y === heading`), positive steer turns right and decreases heading, positive lateral is left of travel. Meters, seconds, radians.
 - Graphics is fully procedural (no asset files). Budget: ~36 draw calls, under 100k triangles. The renderer uses `PCFShadowMap` (the soft variant no longer exists in Three 0.186), no tone mapping, no post-processing.
 - `TrackDefinition` carries only geometry; per-track scenery lives in `src/tracks/<track>-scenery.ts`.
+- Game modes live in `src/modes/<id>/` behind the contract in `src/modes/types.ts` (a session with runs, a HUD description, a results card or an intermission); `src/modes/registry.ts` is the menu order. A mode owns only its folder: no DOM, Three.js only in its visuals file, logic in pure tested functions, scene objects added in `create()` and removed in `dispose()`, bests in localStorage via `src/game/storage.ts`. The engine (`src/game/game.ts`) moves the karts first, then calls the session, which may adjust kart states directly.
+- Touch: the left/right halves steer, the bottom-center band (and the button inside it) brakes, a touch is classified where it starts (`touchRegion` in `src/input/controls.ts`); the band's size is CSS (`--brake-zone-*`).
 - Karts start a few meters before the start line, so `nextCheckpoint` begins at 0 and `progress` is negative on the grid.
 
 ## Workflow

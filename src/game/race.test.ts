@@ -18,6 +18,16 @@ describe('withLaps', () => {
   });
 });
 
+describe('createRace on the grid', () => {
+  it('has valid progress for both karts before the first step', () => {
+    const race = createRace(track);
+    expect(race.playerProgress.progress).toBeCloseTo(-8, 0);
+    expect(race.rivalProgress.progress).toBeCloseTo(-14, 0);
+    expect(race.playerProgress.lap).toBe(1);
+    expect(race.playerProgress.nextCheckpoint).toBe(0);
+  });
+});
+
 describe('createRace without a rival', () => {
   it('parks the rival on the grid and ranks the player first', () => {
     const race = createRace(withLaps(track, 1), { rival: false });
@@ -25,7 +35,8 @@ describe('createRace without a rival', () => {
     for (let i = 0; i < 300; i++) race.step(FULL, 1 / 60);
     expect(race.rival.position).toEqual(start);
     expect(race.rival.speed).toBe(0);
-    expect(race.rivalProgress.progress).toBe(0);
+    // The rival's progress stays at its grid value (14 m before the line).
+    expect(race.rivalProgress.progress).toBeCloseTo(-14, 0);
     expect(race.player.speed).toBeGreaterThan(10);
     expect(race.playerPosition()).toBe(1);
   });
