@@ -15,6 +15,8 @@ export interface Controls {
   /** Seconds (performance.now based) of the most recent press start. For HUD hint fading. */
   lastPressTime(): number;
   getTouchState(): TouchState;
+  /** True once per press of the action button or key (use an item). Consumed by the fixed step. */
+  consumeAction(): boolean;
   dispose(): void;
 }
 
@@ -29,6 +31,8 @@ export interface ControlsOptions {
    * knobs in styles.css define the hit area. Optional: a surface without one just steers.
    */
   brakeZone?: HTMLElement;
+  /** The mode action button (use an item); a press fires once and never counts as a steer touch. */
+  actionButton?: HTMLElement;
 }
 
 /** Hold left = -1, hold right = +1, both or neither = 0. Pure, for testing. */
@@ -66,6 +70,7 @@ export function touchRegion(x: number, y: number, viewportWidth: number, brakeZo
 const STEER_LEFT_KEYS = new Set(['ArrowLeft', 'KeyA']);
 const STEER_RIGHT_KEYS = new Set(['ArrowRight', 'KeyD']);
 const BRAKE_KEYS = new Set(['ArrowDown', 'KeyS', 'Space']);
+const ACTION_KEYS = new Set(['ArrowUp', 'KeyW', 'KeyE', 'Enter']);
 
 /**
  * Touch controls: the left half of the screen steers left, the right half steers right, both
@@ -74,11 +79,12 @@ const BRAKE_KEYS = new Set(['ArrowDown', 'KeyS', 'Space']);
  * switches sides but never starts braking, a braking finger keeps braking wherever it slides,
  * and a finger lifted anywhere releases what it held. Keyboard works too for desktop development.
  */
-export function createControls({ surface, brakeButton, brakeZone }: ControlsOptions): Controls {
+export function createControls({ surface, brakeButton, brakeZone, actionButton }: ControlsOptions): Controls {
   const steerPointers = new Map<number, Side>();
   const brakePointers = new Set<number>();
   const keys: TouchState = { left: false, right: false, brake: false };
   let lastPress = -Infinity;
+  let actionPresses = 0;
 
   const sideOf = (clientX: number): Side => (clientX < window.innerWidth / 2 ? 'left' : 'right');
   const touchState = (): TouchState => {
@@ -97,6 +103,7 @@ export function createControls({ surface, brakeButton, brakeZone }: ControlsOpti
   // --- Steering surface ---
   const onSurfaceDown = (e: PointerEvent) => {
     if (brakeButton.contains(e.target as Node)) return;
+    if (actionButton?.contains(e.target as Node)) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     const region = touchRegion(e.clientX, e.clientY, window.innerWidth, brakeZone?.getBoundingClientRect() ?? null);
     if (region === 'brake') brakePointers.add(e.pointerId);
@@ -135,6 +142,15 @@ export function createControls({ surface, brakeButton, brakeZone }: ControlsOpti
     brakePointers.delete(e.pointerId);
   };
 
+  // --- Action button: a press, not a hold ---
+  const onActionDown = (e: PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    actionPresses++;
+    notePress();
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   // A pointer can end anywhere (or be taken by the browser): listen at the window too.
   const onWindowUp = (e: PointerEvent) => {
     steerPointers.delete(e.pointerId);
@@ -152,7 +168,9 @@ export function createControls({ surface, brakeButton, brakeZone }: ControlsOpti
     if (STEER_LEFT_KEYS.has(e.code)) keys.left = down;
     else if (STEER_RIGHT_KEYS.has(e.code)) keys.right = down;
     else if (BRAKE_KEYS.has(e.code)) keys.brake = down;
-    else handled = false;
+    else if (ACTION_KEYS.has(e.code)) {
+      if (down && !e.repeat) actionPresses++;
+    } else handled = false;
     if (handled) {
       if (down && !e.repeat) notePress();
       e.preventDefault();
@@ -170,6 +188,10 @@ export function createControls({ surface, brakeButton, brakeZone }: ControlsOpti
   brakeButton.addEventListener('pointerdown', onBrakeDown);
   brakeButton.addEventListener('pointerup', releaseBrake);
   brakeButton.addEventListener('pointercancel', releaseBrake);
+  if (actionButton) {
+    actionButton.style.touchAction = 'none';
+    actionButton.addEventListener('pointerdown', onActionDown);
+  }
   window.addEventListener('pointerup', onWindowUp);
   window.addEventListener('pointercancel', onWindowUp);
   window.addEventListener('blur', clearAll);
@@ -181,6 +203,11 @@ export function createControls({ surface, brakeButton, brakeZone }: ControlsOpti
     getInput: () => resolveInput(touchState(), keys),
     isTouching: () => steerPointers.size > 0 || brakePointers.size > 0 || keys.left || keys.right || keys.brake,
     lastPressTime: () => lastPress,
+    consumeAction() {
+      if (actionPresses === 0) return false;
+      actionPresses = 0;
+      return true;
+    },
     getTouchState() {
       const t = touchState();
       return { left: t.left || keys.left, right: t.right || keys.right, brake: t.brake || keys.brake };
@@ -193,6 +220,7 @@ export function createControls({ surface, brakeButton, brakeZone }: ControlsOpti
       brakeButton.removeEventListener('pointerdown', onBrakeDown);
       brakeButton.removeEventListener('pointerup', releaseBrake);
       brakeButton.removeEventListener('pointercancel', releaseBrake);
+      actionButton?.removeEventListener('pointerdown', onActionDown);
       window.removeEventListener('pointerup', onWindowUp);
       window.removeEventListener('pointercancel', onWindowUp);
       window.removeEventListener('blur', clearAll);

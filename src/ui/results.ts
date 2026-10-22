@@ -1,22 +1,32 @@
 import { button, el, hide, show } from './dom';
-import { formatLapTime } from './format';
-import { muteLabel } from './title';
+import { muteLabel } from './menu';
 
-export interface ResultsData {
-  won: boolean;
-  totalTime: number;
-  bestLap: number | null;
+export type ResultsTone = 'win' | 'lose' | 'neutral';
+
+/** A card at the end of a run: the modes describe it, the engine shows it. */
+export interface ResultsView {
+  headline: string;
+  tone: ResultsTone;
+  /** Label / value rows. */
+  rows: [string, string][];
+  /** Free lines above the rows (an intermission message). */
+  lines?: string[];
+  /** Label of the primary button. */
+  primary: string;
+  /** Whether the "Menu" button is offered. */
+  menu: boolean;
 }
 
 export interface ResultsScreen {
   element: HTMLElement;
-  show(data: ResultsData): void;
+  show(view: ResultsView): void;
   hide(): void;
   setMuted(muted: boolean): void;
 }
 
 export interface ResultsHandlers {
-  onRaceAgain(): void;
+  onPrimary(): void;
+  onMenu(): void;
   onToggleMute(): void;
 }
 
@@ -25,16 +35,15 @@ export function createResultsScreen(parent: HTMLElement, handlers: ResultsHandle
   element.setAttribute('aria-label', 'Results');
 
   const card = el('div', 'card');
-  const headline = el('h2', 'headline glam', 'You won!');
+  const headline = el('h2', 'headline glam', '');
   headline.style.margin = '0';
+  const lines = el('div', 'lines');
   const stats = el('dl', 'stats');
-  const totalLabel = el('dt', undefined, 'Total time');
-  const totalValue = el('dd', undefined, '0:00.00');
-  const bestLabel = el('dt', undefined, 'Best lap');
-  const bestValue = el('dd', undefined, '--');
-  stats.append(totalLabel, totalValue, bestLabel, bestValue);
-  const again = button('btn', 'Race again', handlers.onRaceAgain);
-  card.append(headline, stats, again);
+  const buttons = el('div', 'buttons');
+  const primary = button('btn btn-primary', 'Race again', handlers.onPrimary);
+  const menu = button('btn btn-secondary', 'Menu', handlers.onMenu);
+  buttons.append(primary, menu);
+  card.append(headline, lines, stats, buttons);
 
   const mute = button('btn btn-icon mute', muteLabel(false), handlers.onToggleMute);
   mute.setAttribute('aria-label', 'Toggle sound');
@@ -44,13 +53,19 @@ export function createResultsScreen(parent: HTMLElement, handlers: ResultsHandle
 
   return {
     element,
-    show(data) {
-      headline.textContent = data.won ? 'You won!' : 'Vix won';
-      headline.classList.toggle('glam', data.won);
-      headline.classList.toggle('glam-lavender', !data.won);
-      element.classList.toggle('lost', !data.won);
-      totalValue.textContent = formatLapTime(data.totalTime);
-      bestValue.textContent = data.bestLap === null ? '--' : formatLapTime(data.bestLap);
+    show(view) {
+      headline.textContent = view.headline;
+      headline.classList.toggle('glam', view.tone !== 'lose');
+      headline.classList.toggle('glam-lavender', view.tone === 'lose');
+      element.classList.toggle('lost', view.tone === 'lose');
+      lines.replaceChildren(...(view.lines ?? []).map((text) => el('p', 'line', text)));
+      lines.classList.toggle('hidden', !view.lines?.length);
+      stats.replaceChildren(
+        ...view.rows.flatMap(([label, value]) => [el('dt', undefined, label), el('dd', undefined, value)]),
+      );
+      stats.classList.toggle('hidden', view.rows.length === 0);
+      primary.textContent = view.primary;
+      menu.classList.toggle('hidden', !view.menu);
       element.classList.add('fade-in');
       show(element);
     },

@@ -1,4 +1,5 @@
 import type { TouchState } from '../input/controls';
+import type { ModeHud } from '../modes/types';
 import { el, hide, show } from './dom';
 import { formatRaceTime, ordinal } from './format';
 
@@ -21,9 +22,12 @@ export interface Hud {
   brakeButton: HTMLButtonElement;
   /** The brake band at the bottom center; the controls read its box to classify touches. */
   brakeZone: HTMLElement;
+  /** The mode action button on the right edge; hidden unless the mode gives it a label. */
+  actionButton: HTMLButtonElement;
   show(): void;
   hide(): void;
-  update(state: HudState): void;
+  /** Refresh the labels; `mode` overrides the pills and adds a status line and the action button. */
+  update(state: HudState, mode?: ModeHud): void;
   /** Show the steering hints (again) for HINT_SECONDS. */
   revealHints(): void;
 }
@@ -37,6 +41,7 @@ export function createHud(parent: HTMLElement): Hud {
   const timer = el('div', 'hud-pill hud-timer', '0:00.0');
   const lap = el('div', 'hud-pill hud-lap', 'Lap 1/3');
   top.append(position, timer, lap);
+  const status = el('div', 'hud-pill hud-status hidden', '');
 
   const zoneLeft = el('div', 'zone zone-left');
   zoneLeft.appendChild(el('span', 'arrow', '‹'));
@@ -49,11 +54,15 @@ export function createHud(parent: HTMLElement): Hud {
   brakeButton.type = 'button';
   brakeButton.setAttribute('aria-label', 'Brake');
 
-  element.append(zoneLeft, zoneRight, zoneBrake, top, brakeButton);
+  const actionButton = el('button', 'action hidden', '');
+  actionButton.type = 'button';
+  actionButton.setAttribute('aria-label', 'Action');
+
+  element.append(zoneLeft, zoneRight, zoneBrake, top, status, brakeButton, actionButton);
   parent.appendChild(element);
 
   let hintsUntil = 0;
-  let lastText = { position: '', timer: '', lap: '' };
+  let lastText = { position: '', timer: '', lap: '', status: '', action: '' };
   const now = () => performance.now() / 1000;
 
   const setText = (node: HTMLElement, key: keyof typeof lastText, text: string) => {
@@ -66,6 +75,7 @@ export function createHud(parent: HTMLElement): Hud {
     element,
     brakeButton,
     brakeZone: zoneBrake,
+    actionButton,
     show() {
       show(element);
     },
@@ -76,10 +86,18 @@ export function createHud(parent: HTMLElement): Hud {
       hintsUntil = now() + HINT_SECONDS;
       element.classList.remove('hints-hidden');
     },
-    update(state) {
-      setText(position, 'position', ordinal(state.position));
-      setText(timer, 'timer', formatRaceTime(state.time));
-      setText(lap, 'lap', `Lap ${Math.min(state.lap, state.laps)}/${state.laps}`);
+    update(state, mode = {}) {
+      // Endless runs have a huge lap count; show the lap alone unless the mode says otherwise.
+      const laps = state.laps > 99 ? `Lap ${state.lap}` : `Lap ${Math.min(state.lap, state.laps)}/${state.laps}`;
+      setText(position, 'position', mode.left ?? ordinal(state.position));
+      setText(timer, 'timer', mode.center ?? formatRaceTime(state.time));
+      setText(lap, 'lap', mode.right ?? laps);
+      const statusText = mode.status ?? '';
+      setText(status, 'status', statusText);
+      status.classList.toggle('hidden', statusText === '');
+      const actionText = mode.action ?? '';
+      setText(actionButton, 'action', actionText);
+      actionButton.classList.toggle('hidden', actionText === '');
       zoneLeft.classList.toggle('active', state.touch.left);
       zoneRight.classList.toggle('active', state.touch.right);
       zoneBrake.classList.toggle('active', state.touch.brake);

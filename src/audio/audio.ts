@@ -13,6 +13,9 @@ export interface EngineSound {
   set(speedRatio: number, onRoad: boolean): void;
 }
 
+/** Short synthesized effects for the game modes. */
+export type Sfx = 'pickup' | 'bonus' | 'boost' | 'hit' | 'warn' | 'splash' | 'tick';
+
 export interface GameAudio {
   /** Create/resume the AudioContext. Call from a user gesture (also wired automatically). */
   unlock(): void;
@@ -24,6 +27,8 @@ export interface GameAudio {
   countdownBeep(step: number): void;
   goTone(): void;
   resultsSting(won: boolean): void;
+  /** Play a mode effect; pitch scales every frequency (1 = as designed, 1.2 a bit higher). */
+  sfx(name: Sfx, pitch?: number): void;
   /** Tab hidden / shown. */
   suspend(): void;
   resume(): void;
@@ -209,6 +214,34 @@ export function createAudio(): GameAudio {
         const notes = [440, 392, 330];
         notes.forEach((f, i) => tone(f, 0.3, { at: i * 0.22, gain: 0.14, type: 'triangle' }));
         tone(262, 0.9, { at: 0.66, gain: 0.12, type: 'sawtooth', slideTo: 220 });
+      }
+    },
+    sfx(name, pitch = 1) {
+      const p = Math.max(0.25, Math.min(4, pitch));
+      switch (name) {
+        case 'pickup':
+          tone(880 * p, 0.09, { type: 'triangle', gain: 0.14 });
+          tone(1320 * p, 0.12, { at: 0.06, type: 'triangle', gain: 0.12 });
+          break;
+        case 'bonus':
+          [659, 880, 1319].forEach((f, i) => tone(f * p, 0.14, { at: i * 0.07, gain: 0.14 }));
+          break;
+        case 'boost':
+          tone(220 * p, 0.5, { type: 'sawtooth', gain: 0.12, slideTo: 880 * p });
+          break;
+        case 'hit':
+          tone(160 * p, 0.25, { type: 'square', gain: 0.16, slideTo: 60 * p });
+          break;
+        case 'warn':
+          tone(440 * p, 0.12, { type: 'square', gain: 0.1 });
+          tone(440 * p, 0.12, { at: 0.16, type: 'square', gain: 0.1 });
+          break;
+        case 'splash':
+          tone(300 * p, 0.6, { type: 'sawtooth', gain: 0.1, slideTo: 90 * p });
+          break;
+        case 'tick':
+          tone(1200 * p, 0.04, { type: 'square', gain: 0.06 });
+          break;
       }
     },
     suspend() {

@@ -1,6 +1,6 @@
 /**
- * The game: state machine (title → countdown → racing → finished) and the glue between the
- * engine, input, UI, audio, sim and graphics modules.
+ * The game: the main menu, the mode sessions and their runs (countdown → racing → finished),
+ * and the glue between the engine, input, UI, audio, sim, graphics and mode modules.
  */
 import * as THREE from 'three';
 import type { KartInput } from '../shared/types';
@@ -17,19 +17,23 @@ import { createLoop } from '../engine/loop';
 import { createControls } from '../input/controls';
 import { createUi } from '../ui';
 import { createAudio } from '../audio/audio';
-import { createRace, type Race } from './race';
+import { createRace, withLaps, type Race } from './race';
 import { enterLandscapeFullscreen } from './fullscreen';
+import { MODES, modeById } from '../modes/registry';
+import type { GameMode, ModeContext, ModeFinish, ModeId, ModeSession, RunSetup } from '../modes/types';
 
-export type Phase = 'title' | 'countdown' | 'racing' | 'finished';
+export type Phase = 'menu' | 'countdown' | 'racing' | 'finished';
 
 /** Seconds the karts sit frozen while 3-2-1 plays. */
 export const COUNTDOWN_SECONDS = 3;
 /** How long the GO banner stays up once the race starts. */
 const GO_BANNER_SECONDS = 0.9;
-/** Pause between crossing the line and the results card. */
+/** Pause between the end of a run and the results card. */
 const RESULTS_DELAY_SECONDS = 1.4;
 /** Speed that counts as "full revs" for the engine sound, m/s: the kart's own top speed. */
 const ENGINE_TOP_SPEED = PLAYER_TUNING.topSpeed;
+/** How far a ghost kart fades (1 = the full fade of GHOST in kart-mesh.ts). */
+const GHOST_AMOUNT = 0.7;
 
 export interface Game {
   start(): void;
@@ -58,18 +62,21 @@ export function createGame(container: HTMLElement): Game {
 
   // --- Audio, UI, input ---
   const audio = createAudio();
-  const onPlay = () => {
-    audio.unlock();
-    void enterLandscapeFullscreen();
-    beginCountdown();
-  };
-  const onRaceAgain = () => {
-    audio.unlock();
-    beginCountdown();
-  };
   const ui = createUi(container, {
-    onPlay,
-    onRaceAgain,
+    modes: MODES.map((m) => m.info),
+    onPick(id) {
+      audio.unlock();
+      void enterLandscapeFullscreen();
+      startMode(id);
+    },
+    onPrimary() {
+      audio.unlock();
+      primaryAction();
+    },
+    onMenu() {
+      audio.unlock();
+      goToMenu();
+    },
     onToggleMute: () => ui.setMuted(audio.toggleMuted()),
   });
   ui.setMuted(audio.isMuted());
@@ -77,11 +84,22 @@ export function createGame(container: HTMLElement): Game {
     surface: ui.hud.element,
     brakeButton: ui.hud.brakeButton,
     brakeZone: ui.hud.brakeZone,
+    actionButton: ui.hud.actionButton,
   });
 
   // --- State ---
-  let phase: Phase = 'title';
+  let phase: Phase = 'menu';
+  let mode: GameMode = MODES[0];
+  let session: ModeSession | null = null;
+  /** 1-based run within the session (a hot-seat session has one run per player). */
+  let run = 0;
+  let setup: RunSetup = { laps: track.definition.laps, rival: 'ai' };
   let race: Race = createRace(track);
+  /** Race time at which the current run ended. */
+  let finishedAt = 0;
+  /** What the results card shows, and so what its primary button does. */
+  let pending: ModeFinish | null = null;
+  const ctx: ModeContext = { track, scene, camera, audio };
 
   // Compile the translucent variant of the kart shader now, so the first time Vix tailgates and
   // fades there is no hitch mid-race. A long dt on the way back snaps the materials to opaque.
@@ -111,28 +129,71 @@ export function createGame(container: HTMLElement): Game {
   const hudState = () => ({
     position: race.playerPosition(),
     lap: race.playerProgress.lap,
-    laps: track.definition.laps,
+    laps: race.track.definition.laps,
     time: race.time,
     touch: controls.getTouchState(),
   });
 
-  function beginCountdown() {
-    race = createRace(track);
+  /** Pick a mode from the menu (or race it again): a fresh session, then its first run. */
+  function startMode(id: ModeId) {
+    disposeSession();
+    mode = modeById(id);
+    session = mode.create(ctx);
+    run = 0;
+    beginRun();
+  }
+
+  /** The next run of the current session: a new race on the grid and the countdown. */
+  function beginRun() {
+    if (!session) return;
+    run += 1;
+    setup = session.setup(run);
+    race = createRace(withLaps(track, setup.laps), { rival: setup.rival === 'ai' });
+    session.startRun(race, run);
     phase = 'countdown';
     countdownTime = 0;
     countdownShown = -1;
     resultsShown = false;
-    ui.title.hide();
+    pending = null;
+    ui.menu.hide();
     ui.results.hide();
     ui.countdown.hide();
     ui.hud.show();
     ui.hud.revealHints();
-    ui.hud.update(hudState());
+    ui.hud.update(hudState(), session.hud(race));
     audio.engine.start();
     playerView.update(race.player, 0);
+    rivalView.setGhost(setup.rival === 'ghost' ? GHOST_AMOUNT : 0);
+    rivalView.object.visible = setup.rival === 'ai';
     rivalView.update(race.rival, 0);
-    // Straight to the grid view; otherwise the camera swoops over from the title orbit or the finish.
+    // Straight to the grid view; otherwise the camera swoops over from the menu orbit or the finish.
     snapChaseCamera(camera, race.player);
+  }
+
+  function primaryAction() {
+    if (pending?.kind === 'intermission') beginRun();
+    else startMode(mode.info.id);
+  }
+
+  function goToMenu() {
+    disposeSession();
+    phase = 'menu';
+    pending = null;
+    audio.engine.stop();
+    ui.hud.hide();
+    ui.results.hide();
+    ui.countdown.hide();
+    race = createRace(track);
+    rivalView.setGhost(0);
+    rivalView.object.visible = true;
+    playerView.update(race.player, 0);
+    rivalView.update(race.rival, 0);
+    ui.menu.show();
+  }
+
+  function disposeSession() {
+    session?.dispose();
+    session = null;
   }
 
   function startRacing() {
@@ -140,28 +201,47 @@ export function createGame(container: HTMLElement): Game {
     ui.countdown.show('GO');
     ui.hud.revealHints();
     audio.goTone();
+    // Presses during the countdown do not fire on the first step.
+    controls.consumeAction();
   }
 
-  function finishRace() {
+  function finishRun() {
     phase = 'finished';
+    finishedAt = race.time;
     audio.engine.stop();
-    audio.resultsSting(race.winner === 'player');
   }
 
-  function showResults() {
+  function showFinish() {
+    if (!session) return;
     resultsShown = true;
+    pending = session.finish(race);
     ui.hud.hide();
-    ui.results.show({
-      won: race.winner === 'player',
-      totalTime: race.totalTime(),
-      bestLap: race.bestLap(),
-    });
+    if (pending.kind === 'results') {
+      audio.resultsSting(pending.won !== false);
+      ui.results.show({
+        headline: pending.headline,
+        tone: pending.won === null ? 'neutral' : pending.won ? 'win' : 'lose',
+        rows: pending.rows,
+        primary: pending.again ?? 'Race again',
+        menu: true,
+      });
+    } else {
+      audio.sfx('bonus');
+      ui.results.show({
+        headline: pending.headline,
+        tone: 'neutral',
+        rows: [],
+        lines: pending.lines,
+        primary: pending.button,
+        menu: true,
+      });
+    }
   }
 
   // --- Fixed-step simulation ---
   function fixedStep(dt: number) {
     switch (phase) {
-      case 'title':
+      case 'menu':
         break;
       case 'countdown': {
         countdownTime += dt;
@@ -175,14 +255,19 @@ export function createGame(container: HTMLElement): Game {
         if (countdownTime >= COUNTDOWN_SECONDS) startRacing();
         break;
       }
-      case 'racing':
-        race.step(playerInput(dt), dt);
+      case 'racing': {
+        if (!session) break;
+        const input = playerInput(dt);
+        race.step(input, dt);
+        session.step(race, input, dt);
+        if (controls.consumeAction()) session.action?.(race);
         if (race.time > GO_BANNER_SECONDS) ui.countdown.hide();
-        if (race.finished) finishRace();
+        if (race.finished || session.isOver(race)) finishRun();
         break;
+      }
       case 'finished':
         race.coast(dt);
-        if (!resultsShown && race.time - race.totalTime() >= RESULTS_DELAY_SECONDS) showResults();
+        if (!resultsShown && race.time - finishedAt >= RESULTS_DELAY_SECONDS) showFinish();
         break;
     }
   }
@@ -197,33 +282,40 @@ export function createGame(container: HTMLElement): Game {
       fpsTime = 0;
     }
     playerView.update(race.player, dt);
-    rivalView.update(race.rival, dt);
 
-    if (phase === 'title') {
+    if (phase === 'menu') {
       orbitCamera(elapsed);
-      rivalView.setGhost(0);
+      rivalView.update(race.rival, dt);
     } else {
       updateChaseCamera(camera, race.player, dt);
-      // A tailgating Vix would otherwise hide the player from the chase camera.
-      rivalView.setGhost(kartOcclusion(camera, race.player, race.rival));
+      if (setup.rival === 'ai') {
+        rivalView.update(race.rival, dt);
+        // A tailgating Vix would otherwise hide the player from the chase camera.
+        rivalView.setGhost(kartOcclusion(camera, race.player, race.rival));
+      } else if (setup.rival === 'ghost') {
+        const ghost = session?.ghost?.(race) ?? null;
+        rivalView.object.visible = ghost !== null;
+        if (ghost) rivalView.update(ghost, dt);
+      }
+      session?.render(race, dt, elapsed);
     }
 
     world.update(dt, elapsed, race.player.position);
 
-    if (phase === 'countdown' || phase === 'racing' || phase === 'finished') {
+    if (phase !== 'menu') {
       const press = controls.lastPressTime();
       if (press !== lastPressSeen) {
         lastPressSeen = press;
         ui.hud.revealHints();
       }
-      ui.hud.update(hudState());
+      ui.hud.update(hudState(), session?.hud(race));
       audio.engine.set(Math.abs(race.player.speed) / ENGINE_TOP_SPEED, race.player.onRoad);
     }
 
     gfx.renderer.render(scene, camera);
   }
 
-  /** A slow orbit around the grid behind the title screen. */
+  /** A slow orbit around the grid behind the main menu. */
   function orbitCamera(elapsed: number) {
     const target = race.player.position;
     const angle = race.player.heading + Math.PI + elapsed * 0.18;
@@ -243,16 +335,23 @@ export function createGame(container: HTMLElement): Game {
   );
 
   /**
-   * window.__berby lets a scripted playtest (.claude/skills/berby-playtest) start races, drive
-   * the player with the rival AI or a fixed input, and read the race state and frame rate.
+   * window.__berby lets a scripted playtest (.claude/skills/berby-playtest) start any mode, drive
+   * the player with the rival AI or a fixed input, press the action button, and read the race
+   * state and frame rate.
    */
   function installDevHook() {
     const hook = {
       get phase() {
         return phase;
       },
-      play: onPlay,
-      raceAgain: onRaceAgain,
+      /** Start a mode without the fullscreen request. */
+      play(id: ModeId = 'race') {
+        audio.unlock();
+        startMode(id);
+      },
+      /** The primary button of the results card (race again / next run). */
+      primary: primaryAction,
+      menu: goToMenu,
       autopilot(on: boolean) {
         dev.autopilot = on;
       },
@@ -261,8 +360,14 @@ export function createGame(container: HTMLElement): Game {
           ? { steer: value.steer ?? 0, throttle: value.throttle ?? (value.brake ? 0 : 1), brake: value.brake ?? 0 }
           : null;
       },
+      /** Press the mode action (use an item) on the next step. */
+      action() {
+        ui.hud.actionButton.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+      },
       state: () => ({
         phase,
+        mode: mode.info.id,
+        run,
         time: race.time,
         lap: race.playerProgress.lap,
         position: race.playerPosition(),
@@ -271,6 +376,10 @@ export function createGame(container: HTMLElement): Game {
         rivalLap: race.rivalProgress.lap,
         winner: race.winner,
         fps,
+        /** What the mode shows on the HUD right now. */
+        hud: session?.hud(race) ?? null,
+        /** What the results card shows once the run ended (null before). */
+        finish: pending,
         /** How much Vix is blocking the camera's view of the player right now (0..1). */
         occlusion: kartOcclusion(camera, race.player, race.rival),
         // World positions, to check which object the camera follows and where each view sits.
@@ -292,7 +401,7 @@ export function createGame(container: HTMLElement): Game {
       return phase;
     },
     start() {
-      ui.title.show();
+      ui.menu.show();
       loop.start();
     },
   };

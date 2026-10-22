@@ -1,14 +1,15 @@
 import './styles.css';
 import { PALETTE_CSS } from '../shared/palette';
+import type { ModeId, ModeInfo } from '../modes/types';
 import { el } from './dom';
-import { createTitleScreen, type TitleScreen } from './title';
+import { createMenuScreen, type MenuScreen } from './menu';
 import { createHud, type Hud } from './hud';
 import { createCountdown, type Countdown } from './countdown';
 import { createResultsScreen, type ResultsScreen } from './results';
 
 export interface Ui {
   root: HTMLElement;
-  title: TitleScreen;
+  menu: MenuScreen;
   hud: Hud;
   countdown: Countdown;
   results: ResultsScreen;
@@ -18,12 +19,18 @@ export interface Ui {
 }
 
 export interface UiHandlers {
-  onPlay(): void;
-  onRaceAgain(): void;
+  /** The cards on the main menu, in order. */
+  modes: readonly ModeInfo[];
+  /** A mode card was tapped. */
+  onPick(id: ModeId): void;
+  /** The primary button on the results card: race again, or the next run after an intermission. */
+  onPrimary(): void;
+  /** Back to the main menu from the results card. */
+  onMenu(): void;
   onToggleMute(): void;
 }
 
-/** Builds every overlay. Layer order, bottom to top: HUD, countdown, results, title, rotate. */
+/** Builds every overlay. Layer order, bottom to top: HUD, countdown, results, menu, rotate. */
 export function createUi(container: HTMLElement, handlers: UiHandlers): Ui {
   applyPalette();
 
@@ -34,7 +41,7 @@ export function createUi(container: HTMLElement, handlers: UiHandlers): Ui {
   const hud = createHud(root);
   const countdown = createCountdown(root);
   const results = createResultsScreen(root, handlers);
-  const title = createTitleScreen(root, handlers);
+  const menu = createMenuScreen(root, handlers.modes, handlers);
 
   const rotate = el('section', 'rotate');
   rotate.appendChild(el('div', 'phone'));
@@ -44,13 +51,13 @@ export function createUi(container: HTMLElement, handlers: UiHandlers): Ui {
 
   return {
     root,
-    title,
+    menu,
     hud,
     countdown,
     results,
     rotate,
     setMuted(muted) {
-      title.setMuted(muted);
+      menu.setMuted(muted);
       results.setMuted(muted);
     },
   };

@@ -164,20 +164,77 @@ body {
   -webkit-text-fill-color: transparent;
 }
 
-/* ---- Title ---- */
+/* ---- Main menu ---- */
 
-.title {
+.menu {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 10px;
+  padding: calc(var(--safe-top) + 8px) calc(var(--safe-right) + 16px) calc(var(--safe-bottom) + 8px)
+    calc(var(--safe-left) + 16px);
   pointer-events: auto;
   background: radial-gradient(ellipse at center, rgba(255, 244, 230, 0.3), rgba(255, 179, 217, 0.55));
 }
 
+.menu-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* One card per game mode: three columns, two rows on a phone in landscape. */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: min(100%, 720px);
+}
+
+.mode-card {
+  pointer-events: auto;
+  appearance: none;
+  border: 0;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 6px 18px rgba(226, 51, 138, 0.18);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.mode-card:active {
+  transform: scale(0.97);
+}
+
+.card-icon {
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.card-name {
+  font-weight: 900;
+  font-size: 17px;
+}
+
+.card-tagline {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  opacity: 0.7;
+}
+
 .wordmark {
-  font-size: clamp(64px, 22vmin, 180px);
+  font-size: clamp(40px, 13vmin, 110px);
   font-weight: 900;
   font-style: italic;
   line-height: 1;
@@ -295,6 +352,22 @@ body {
   justify-self: end;
 }
 
+/* A mode's status line under the pills: a pickup, a warning, a bonus. */
+.hud-status {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--safe-top) + 52px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  white-space: nowrap;
+  color: #fff;
+  font-weight: 900;
+  font-size: 18px;
+  text-shadow:
+    0 2px 0 rgba(226, 51, 138, 0.65),
+    0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
 .zone {
   position: absolute;
   top: 0;
@@ -400,6 +473,42 @@ body {
   opacity: 0.5;
 }
 
+/* The mode action button (use an item): right edge, above where the right thumb rests to steer. */
+.action {
+  position: absolute;
+  right: calc(var(--safe-right) + 14px);
+  top: 34%;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, 0.9);
+  background: var(--lavender);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  pointer-events: auto;
+  box-shadow: 0 6px 20px rgba(201, 167, 255, 0.5);
+  transition: transform 0.1s ease;
+}
+
+.action::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(72px * 1.4);
+  height: calc(72px * 1.4);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+}
+
+.action:active {
+  transform: scale(0.92);
+}
+
 /* ---- Countdown ---- */
 
 .countdown {
@@ -491,6 +600,30 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.lines .line {
+  margin: 0;
+}
+
+.buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-secondary {
+  color: var(--hot-pink);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 14px rgba(226, 51, 138, 0.2);
+}
+
 .fatal {
   position: absolute;
   inset: 0;
@@ -525,8 +658,30 @@ body {
   .brake {
     font-size: 13px;
   }
-  .title {
-    gap: 8px;
+  .menu {
+    gap: 6px;
+  }
+  .mode-card {
+    padding: 7px 10px;
+    gap: 0;
+    border-radius: 14px;
+  }
+  .card-icon {
+    font-size: 20px;
+  }
+  .card-name {
+    font-size: 15px;
+  }
+  .card-tagline {
+    font-size: 11px;
+  }
+  .menu .hint {
+    display: none;
+  }
+  .action {
+    width: 60px;
+    height: 60px;
+    font-size: 12px;
   }
   .hud-position {
     font-size: 24px;

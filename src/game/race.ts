@@ -10,6 +10,20 @@ import { createRaceProgress, updateRaceProgress } from '../sim/race';
 
 export type Winner = 'player' | 'rival';
 
+/** Lap count for runs that a mode ends itself (a timer, a chaser); the lap pill then shows the lap only. */
+export const UNLIMITED_LAPS = 1_000_000;
+
+export interface RaceOptions {
+  /** false parks the rival kart on the grid: no AI, no collisions, no progress (solo modes). */
+  rival?: boolean;
+}
+
+/** The same track with a different lap count; the geometry and checkpoints are shared. */
+export function withLaps(track: Track, laps: number): Track {
+  if (laps === track.definition.laps) return track;
+  return { ...track, definition: { ...track.definition, laps } };
+}
+
 /** Starting grid: meters before the start/finish line, lateral offset (+ = left of travel). */
 export const GRID = {
   player: { back: 8, lateral: -2.5 },
@@ -55,7 +69,8 @@ export interface Race {
   totalTime(): number;
 }
 
-export function createRace(track: Track): Race {
+export function createRace(track: Track, options: RaceOptions = {}): Race {
+  const hasRival = options.rival ?? true;
   const p = gridSlot(track, GRID.player.back, GRID.player.lateral);
   const r = gridSlot(track, GRID.rival.back, GRID.rival.lateral);
   const player = createKartState(p.position, p.heading);
@@ -97,11 +112,13 @@ export function createRace(track: Track): Race {
         return;
       }
       stepKart(player, input, track, dt);
-      stepRivalKart(dt);
-      resolveKartCollision(player, rival);
+      if (hasRival) {
+        stepRivalKart(dt);
+        resolveKartCollision(player, rival);
+      }
       time += dt;
       updateRaceProgress(playerProgress, player, track, time);
-      updateRaceProgress(rivalProgress, rival, track, time);
+      if (hasRival) updateRaceProgress(rivalProgress, rival, track, time);
       if (playerProgress.finished) {
         finished = true;
         const rivalFirst =
@@ -111,12 +128,15 @@ export function createRace(track: Track): Race {
     },
     coast(dt) {
       stepKart(player, COAST_INPUT, track, dt);
-      stepRivalKart(dt);
-      resolveKartCollision(player, rival);
+      if (hasRival) {
+        stepRivalKart(dt);
+        resolveKartCollision(player, rival);
+      }
       time += dt;
-      updateRaceProgress(rivalProgress, rival, track, time);
+      if (hasRival) updateRaceProgress(rivalProgress, rival, track, time);
     },
     playerPosition() {
+      if (!hasRival) return 1;
       if (finished) return winner === 'player' ? 1 : 2;
       if (rivalProgress.finished) return 2;
       return playerProgress.progress >= rivalProgress.progress ? 1 : 2;
